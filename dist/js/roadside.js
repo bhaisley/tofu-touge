@@ -328,12 +328,16 @@
     const eye=new T.PerspectiveCamera(126,1,.32,380);
     eye.userData.tougeReflectionPass=true;eye.userData.tougeMirrorProbe=true;
     const direction=new T.Vector3(),screen=new T.Vector3();
-    let target=null,active=null,previous=-Infinity,updating=false;
-    return (renderer,camera,time,night)=>{
+    const detailEye=new T.Vector3(Infinity,Infinity,Infinity),lastCar=new T.Vector3(Infinity,Infinity,Infinity);
+    let target=null,active=null,previous=-Infinity,lastNight,updating=false;
+    return (renderer,camera,time,night,carPosition)=>{
       if(updating || camera.userData.tougeReflectionPass || renderer.getRenderTarget())return;
-      for(const {mesh,center,nearSq,farSq} of details){
-        const distance=center.distanceToSquared(camera.position);
-        mesh.visible=distance>=nearSq && distance<farSq;
+      if(!detailEye.equals(camera.position)){
+        detailEye.copy(camera.position);
+        for(const {mesh,center,nearSq,farSq} of details){
+          const distance=center.distanceToSquared(detailEye);
+          mesh.visible=distance>=nearSq && distance<farSq;
+        }
       }
       camera.updateMatrixWorld();
       const mobile=renderer.domElement.clientWidth<720;
@@ -347,32 +351,41 @@
         nearest=mirror;closest=d2;
       }
       const u=profile.uniforms;
-      if(!nearest){active=null;u.localReady.value=0;return;}
-      if(nearest===active && u.localReady.value && time>=previous && time-previous<(mobile?.32:.16))return;
+      if(!nearest){u.localReady.value=0;return;}
+      // The probe is bolted to the pole. Orbiting a stationary car only
+      // changes the lookup on the mirror glass; its captured view stays put.
+      const stationary=lastCar.distanceToSquared(carPosition)<.025;
+      const interval=stationary ? .48 : mobile ? .32 : .16;
+      if(nearest===active && lastNight===night && time>=previous && time-previous<interval){
+        u.localReady.value=1;return;
+      }
       if(!target){
         const size=mobile?96:160;
         target=new T.WebGLRenderTarget(size,size,{minFilter:T.LinearFilter,magFilter:T.LinearFilter,depthBuffer:true});
         target.texture.colorSpace=T.LinearSRGBColorSpace;
       }
-      active=nearest;previous=time;updating=true;
-      const before=renderer.getRenderTarget(),shadow=renderer.shadowMap.autoUpdate,xr=renderer.xr.enabled;
+      active=nearest;lastNight=night;previous=time;updating=true;lastCar.copy(carPosition);
+      const before=renderer.getRenderTarget(),shadow=renderer.shadowMap,xr=renderer.xr.enabled;
+      const auto=shadow.autoUpdate,dirty=shadow.needsUpdate;
       eye.position.copy(active.centre).addScaledVector(active.face,.11);
       eye.lookAt(night?active.uphillLook:active.look);eye.updateMatrixWorld(true);
       u.viewRotation.value.setFromMatrix4(eye.matrixWorldInverse);
       try{
-        profile.material.visible=false;renderer.xr.enabled=false;renderer.shadowMap.autoUpdate=false;
+        profile.material.visible=false;renderer.xr.enabled=false;shadow.autoUpdate=false;shadow.needsUpdate=false;
         renderer.setRenderTarget(target);renderer.clear();renderer.render(scene,eye);
         u.localImage.value=target.texture;u.localOrigin.value.copy(active.centre);u.localReady.value=1;
       }finally{
-        renderer.setRenderTarget(before);renderer.shadowMap.autoUpdate=shadow;renderer.xr.enabled=xr;
+        renderer.setRenderTarget(before);shadow.autoUpdate=auto;shadow.needsUpdate=dirty;renderer.xr.enabled=xr;
         profile.material.visible=true;updating=false;
       }
+      return true;
     };
   }
 
-  window.addRoadside = function addRoadside(scene, course) {
+  function* buildRoadside(scene, course) {
     const group = new T.Group(); group.name = "Haruna roadside";
     const atlas=makeAtlas(), tiles=atlas.regions;
+    yield;
     const materials={
       steel:texturedFinish("roadside-zinc.webp",.45,.68,.77,.0009),
       farSteel:new T.MeshStandardMaterial({vertexColors:true,roughness:.49,metalness:.54,side:T.DoubleSide}),
@@ -445,6 +458,7 @@
       const count=Math.ceil((to-from)/3.0);
       let prev,farStart;
       for(let j=0;j<=count;j++){
+        if((j&31)===0)yield;
         const s=from+(to-from)*j/count;
         const edgeDist=Math.min(s-from,to-s);
         const drop=Math.max(0,1-edgeDist/3.6);
@@ -478,6 +492,7 @@
         prev=ring;
       }
       for(let s=from+1.7,i=0;s<to-1.1;s+=4.05,i++){
+        if((i&31)===0)yield;
         const f=frame(course,s,side*(dRail+.16));
         const b=section(s);
         const terminal=Math.min(s-from,to-s)<2.1;
@@ -522,6 +537,7 @@
     // Reinforced-concrete utility poles, porcelain pin insulators and service drops.
     let previousPole=null, shopFeeder=null, feederDistance=Infinity;
     for(let nominal=10, i=0; nominal<course.length-2; nominal+=46+5*Math.cos(i*1.83),i++) {
+      if((i&7)===0)yield;
       const s=Math.abs(nominal-finish)<15 ? finish+(nominal<finish?-18:21) : nominal;
       const f=frame(course,s,8.05), b=section(s);
       const h=9.05+.28*Math.sin(i*1.65);
@@ -683,6 +699,7 @@
     }
     turns.sort((a,b)=>a.s-b.s);
     for(const {s,k} of turns){
+      yield;
       const outer=-Math.sign(k);
       marker(s-61,-1,"turn",k>0);
       const f=frame(course,s+61,7.24,Math.PI);
@@ -854,6 +871,7 @@
       b.tile.tube(f(-1.14,2.43,altar),f(1.14,2.43,altar),.065,.065,0x838579,9,true);
     }
     shrine(split-22);
+    yield;
 
     function tofuShop(s) {
       const f=frame(course,s,13.1,Math.PI/2-.085), b=section(s);
@@ -1021,6 +1039,7 @@
 
     for(const [index,b] of sections.entries()){
       if(!b) continue;
+      yield;
       let closeSteelBounds;
       for(const key of Object.keys(materials)){
         if(key==="wire")continue;
@@ -1080,9 +1099,17 @@
           light.color.setHex(f.color);light.distance=f.reach;
         }
       }
-      updateView(renderer,camera,time,night);
+      return updateView(renderer,camera,time,night,carPosition);
     };
     scene.add(group);
     return group;
-  };
+  }
+  function addRoadside(scene, course) {
+    const steps=buildRoadside(scene,course);
+    let part=steps.next();
+    while(!part.done)part=steps.next();
+    return part.value;
+  }
+  addRoadside.steps=buildRoadside;
+  window.addRoadside=addRoadside;
 })();

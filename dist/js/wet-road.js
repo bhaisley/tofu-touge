@@ -109,6 +109,8 @@
       this.runoffSample = new T.Vector3();
       this.erosionSample = new T.Vector3();
       this.elapsed = 1;
+      this.lastEye=new T.Vector3(Infinity,Infinity,Infinity);
+      this.lastCameraRotation=new T.Quaternion();
       this.useSmallTarget = false;
       this.timeOverBudget = 0;
       this.lastDrawCalls = 0;
@@ -314,6 +316,7 @@
     setCourse(course) {
       this.course=course;
       this.gravelStation=-Infinity;this.uniforms.wetReady.value=0;this.elapsed=1;
+      this.poolStation=-Infinity;
     }
 
     waterAt(station, offset, x, z) {
@@ -410,7 +413,28 @@
       }
     }
 
-    update(renderer, scene, camera, car, sky, dt, cut, pixelRatio) {
+    nearbyPools(car) {
+      const station=car.contact.s;
+      if(!this.course)return 1;
+      if(Math.abs(station-this.poolStation)<5)return this.poolCoverage;
+      this.poolStation=station;
+      let peak=0;
+      // Reflected radiance from plain damp aggregate is much less visible
+      // than a puddle. Sample the same drainage field as the fragment shader,
+      // including the lane edges and the tarmac behind an orbiting driver.
+      for(const offset of [-15,-5,3,12,23,37]){
+        const p=this.course.sample(station+offset);
+        for(const across of [-4.25,-2.6,-.85,.85,2.6,4.25]){
+          const wet=this.waterAt(p.s,across,p.x+p.rx*across,p.z+p.rz*across);
+          peak=Math.max(peak,wet);
+          if(peak>.76)break;
+        }
+        if(peak>.76)break;
+      }
+      return this.poolCoverage=peak;
+    }
+
+    update(renderer, scene, camera, car, sky, dt, cut, pixelRatio, mirrorDrawn=false) {
       if (camera.userData.tougeReflectionPass) return;
       if (this.shoulderGeometry && this.forestGround?.colors?.version !== this.forestColorVersion)
         this.matchForestFloor(this.shoulderGeometry);
@@ -422,17 +446,28 @@
       }
       if (!this.enabled) return;
       this.elapsed += dt;
-      this.timeOverBudget = Math.max(0, Math.min(3, this.timeOverBudget + (dt > .048 ? dt : -dt*.27)));
-      if (this.timeOverBudget > 1.8) this.useSmallTarget = true;
+      this.timeOverBudget = Math.max(0, Math.min(3, this.timeOverBudget + (dt > .027 ? Math.min(dt,.075) : -dt*.28)));
+      if(this.timeOverBudget>1.8)this.useSmallTarget=true;
+      else if(this.timeOverBudget<.12)this.useSmallTarget=false;
       renderer.getSize(this.eyeSize);
       const small = this.useSmallTarget || pixelRatio < .83 || Math.min(this.eyeSize.x,this.eyeSize.y) < 520;
       const scale = Math.min(small ? .34 : .48, (small ? 400 : 720)/Math.max(this.eyeSize.x,this.eyeSize.y));
       const w = Math.max(8, Math.round(this.eyeSize.x*scale/4)*4);
       const h = Math.max(8, Math.round(this.eyeSize.y*scale/4)*4);
       const resized = w !== this.target.width || h !== this.target.height;
-      const interval = Math.abs(car.speed) < .5 ? 1/12 : small ? 1/24 : 1/34;
-      if (!cut && !resized && this.elapsed+1e-5 < interval) return;
-      this.elapsed %= interval;
+      const eyeTravel=this.lastEye.distanceToSquared(camera.position);
+      const turn=1-Math.abs(camera.quaternion.dot(this.lastCameraRotation));
+      const stopped=Math.abs(car.speed)<.5;
+      const moving=!stopped || eyeTravel>.012 || turn>.00009;
+      const detail=T.MathUtils.smoothstep(this.nearbyPools(car),.12,.7);
+      const hz=moving?T.MathUtils.lerp(small?12:16,small?24:34,detail):4;
+      const interval=1/hz;
+      const brake=Math.max(car.brake||0,car.handbrake?.72:0),skyReady=sky.material?.uniforms?.ready?.value;
+      const relit=this.lastSkyReady!==skyReady || (!moving && Math.abs(brake-this.lastBrake)>.12);
+      const reframed=stopped && (eyeTravel>.22 || turn>.0016);
+      const freshView=cut || resized || relit || reframed || !this.uniforms.wetReady.value || eyeTravel>9 || turn>.035;
+      if(!freshView && (mirrorDrawn || this.elapsed+.000001<interval))return;
+      this.elapsed=freshView?0:Math.max(0,this.elapsed-Math.floor((this.elapsed+.000001)/interval)*interval);
       if (resized) {
         this.target.setSize(w,h);
         this.uniforms.wetTexel.value.set(1/w,1/h);
@@ -492,6 +527,9 @@
         this.lastDrawCalls=renderer.info.render.calls;
         this.lastTriangles=renderer.info.render.triangles;
         this.uniforms.wetReady.value=1;
+        this.lastEye.copy(camera.position);
+        this.lastCameraRotation.copy(camera.quaternion);
+        this.lastBrake=brake;this.lastSkyReady=skyReady;
       } finally {
         sky.position.copy(camera.position);
         renderer.setRenderTarget(previousTarget);

@@ -88,11 +88,15 @@ The engine uses original synthesized exhaust recordings at 960, 2,400, 3,600 and
 
 ## Handling and chase cameras
 
+The title screen prepares the pass in short batches. You can choose either course, open the radio or read the controls while it loads. Before a countdown begins, the renderer prepares the shaders, textures and lights for that stage. During a run, shadows, wet asphalt and roadside mirrors use simpler geometry for details too small to resolve in those views. The main camera draws the full GR86.
+
 The chassis runs at 120 Hz. The front and rear tires share their available grip between cornering and longitudinal force. Braking shifts load forward, power goes to the rear axle, and a short rear lock can initiate a drift. Both rear contact patches lay rubber in proportion to slip. Hot tires leave a smoke plume on drier asphalt and throw more spray across standing water. The cameras, wheels and tire trails share an interpolated pose.
 
 Run `node tools/check-handling.cjs` to reproduce braking, throttle oversteer, a keyboard and an analog hairpin, a complete delivery, and a glancing barrier hit. Run `node tools/check-presentation.cjs` to check motion between physics ticks across several display rates and a recovery. Run `node sound/sfx/check-mix.cjs` to check tire levels, engine response, the camera perspectives and wall reflections.
 
 Run `node tools/check-chase-orbit.cjs` to check mouse capture, release and camera clearance during a slide in either direction of the pass.
+
+Run `node tools/check-forest.cjs` to verify vegetation placement and visibility on both passes. With Playwright and Chromium, `node tools/check-startup.cjs` exercises both starts, cancellation and recovery after WebGL context loss. Pass it the served game URL to also check the menu with a delayed graphics download.
 
 With Playwright and Chromium installed, `node tools/check-radio.cjs` exercises the offline song picker, measures audible output from all five tracks, and checks crossfades, rapid skips, pause and resume, and the saved selection. `node tools/check-touch.cjs` drives both stages and checks phone layouts, simultaneous touches, legacy records and the independent volume controls. Set `CHROME_BIN` to use an existing Chromium installation.
 

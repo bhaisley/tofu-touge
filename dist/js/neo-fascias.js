@@ -333,7 +333,7 @@
     }
   }
 
-  function frontFascia(api) {
+  function* frontFascia(api) {
     const {b,profile}=api, nose=makeEnd(profile,false);
     // Roll the leading edge under the hood. The reveal directly below is an open
     // dark horizontal grille between the raised lamps.
@@ -430,7 +430,8 @@
       p[2]=mix(p[2],-1.71,v);
       return p;
     },down,0x1b1e21);
-    raisedHeadlights(api,nose);
+    yield;
+    raisedHeadlights(api,nose);yield;
   }
 
   function rearLamps(api,back) {
@@ -880,7 +881,7 @@
     }
   }
 
-  function rearFascia(api) {
+  function* rearFascia(api) {
     const {b,profile}=api,back=makeEnd(profile,true);
     // The central stamping spans the space between the angled lamp edges.
     // Outer patches turn into the quarters using the same section as the sides.
@@ -931,6 +932,7 @@
         const p=diffuserSkin(raw(u,low(u)));
         p[2]=mix(p[2],1.650,v);p[1]+=.020*v;return p;
       },down,0x212527);
+      yield;
     }
     for(const x of [-.304,-.191,.191,.304]){
       b.patch('satin',16,8,(u,v)=>{
@@ -938,13 +940,15 @@
         return [x+(.002+.004*v)*Math.cos(Math.PI*v),y,1.729+.371*u];
       },[Math.sign(x),-.5,.16],0x373b3a);
     }
-    rearLamps(api,back);deckDetails(api,back);ducktail(api,back);
+    rearLamps(api,back);yield;
+    deckDetails(api,back);yield;
+    ducktail(api,back);yield;
     lowerBeacon(api,back);tailpipes(api,back);
   }
 
-  window.TougeNeo86.buildFascias = api => {
-    surfaceFinishes(api);
-    frontFascia(api);
-    rearFascia(api);
-  };
+  window.TougeNeo86.buildFascias=window.TougeNeo86.staged(function* buildFascias(api){
+    surfaceFinishes(api);yield;
+    yield* frontFascia(api);
+    yield* rearFascia(api);
+  });
 })();

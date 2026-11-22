@@ -16,6 +16,19 @@
   // Shared by the rocker, the panel behind each rear wheel and the bumper return.
   const pandaTrim={valanceTop:.391,beltBottom:.443,beltTop:.497,black:0x202329,belt:0x171b21};
   const model = window.TougeNeo86 = {dims,pandaTrim};
+  // The authoring tools finish a build synchronously. The game can run the
+  // same geometry recipe in small batches while the stage cover is visible.
+  model.staged=steps=>{
+    const build=(...args)=>{
+      const job=steps(...args);let part;
+      do {part=job.next();} while(!part.done);
+      return part.value;
+    };
+    build.steps=steps;return build;
+  };
+  function* buildPart(build,api){
+    return build.steps?yield* build.steps.call(model,api):build.call(model,api);
+  }
 
   // Shared transverse sections keep the nose, body sides and trunk tangential at their joins.
   // Station, half-width at the top of the wing, wing height, centreline height.
@@ -441,7 +454,7 @@
     }
   }
 
-  model.create=function createGR86() {
+  model.create=model.staged(function* createGR86() {
     const group=new T.Group();group.name='Toyota GR86 · NEO86';
     const suspension=new T.Group();suspension.name='Sprung chassis';suspension.rotation.order='ZXY';
     const rollCenterHeight=.38;
@@ -451,11 +464,14 @@
     const b=new GeometryBatch(materials),driverBatch=new GeometryBatch(materials);
     const brakeLight={value:0},lampSources={},exhaustOutlets=[];
     const api={b,driverBatch,Batch:GeometryBatch,materials,dims,profile,atlasUV,texture,box,rod,tube,wheelCarrier,lampSources,exhaustOutlets};
-    model.buildBody(api);model.buildFascias(api);
+    yield;
+    yield* buildPart(model.buildBody,api);
+    yield* buildPart(model.buildFascias,api);
     bindLampSpill(materials,lampSources,brakeLight);
     const body=b.build('NEO86 bodywork');body.position.y=-suspension.position.y;suspension.add(body);
     const driver=driverBatch.build('Driver');body.add(driver);
-    const wheels=model.buildWheels(api);
+    yield;
+    const wheels=yield* buildPart(model.buildWheels,api);
     function setMotion({wheelAngle=0,rearWheelAngle=wheelAngle,steer=0,brake=0,bodyRoll=0,bodyPitch=0,suspensionOffsets}={}) {
       // Leave a clearance margin within the measured 32 mm of travel at full lock.
       // The bump rubber progressively carries the sprung body during combined roll and dive.
@@ -488,5 +504,5 @@
     function setDisplayMode(parked){driver.visible=!parked;displayPlate.value=parked?1:0;}
     return {group,body,driver,suspension,wheels,exhaustOutlets,setMotion,setDisplayMode,axles:{front:dims.frontAxle,rear:dims.rearAxle,
       frontTrack:dims.frontTrack,rearTrack:dims.rearTrack,halfTrack:(dims.frontTrack+dims.rearTrack)/2,radius:dims.tireRadius}};
-  };
+  });
 })();

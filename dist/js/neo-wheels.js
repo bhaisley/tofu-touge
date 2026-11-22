@@ -16,7 +16,7 @@
 
   // Both maps wrap around the axle. The separate bead, shoulder and crown
   // bands use the V coordinates of the revolved tire cross-section.
-  function rubberMaps() {
+  function* rubberMaps() {
     const w = 2048, h = 256, pigment = canvas(w,h), relief = canvas(w,h);
     const color = pigment.createImageData(w,h), height = relief.createImageData(w,h);
     let seed = 47291;
@@ -31,9 +31,10 @@
       for (let x = 0; x < w; x++) {
         const i = 4 * (x + w * y), grit = noise();
         const value = 37 + band*10 + molded*3 + grit*6;
-        color.data.set([value,value+.8,value+1,255],i);
-        height.data.set([141+grit*12+molded*21,0,0,255],i);
+        color.data[i]=value;color.data[i+1]=value+.8;color.data[i+2]=value+1;color.data[i+3]=255;
+        height.data[i]=141+grit*12+molded*21;height.data[i+3]=255;
       }
+      if((y&31)===31)yield;
     }
     pigment.putImageData(color,0,0); relief.putImageData(height,0,0);
     function line(context, shade, width, points) {
@@ -104,6 +105,7 @@
         const i=4*(x+y*w), surface=packed.data[i];
         packed.data[i+1]=(surface<100?213:177)-crown*17+noise()*9;
       }
+      if((y&31)===31)yield;
     }
     relief.putImageData(packed,0,0);
     return {map:canvasMap(pigment,T.SRGBColorSpace),packed:canvasMap(relief,T.NoColorSpace)};
@@ -123,8 +125,8 @@
     return canvasMap(c,T.SRGBColorSpace);
   }
 
-  function wheelMaterials(base) {
-    const materials=Object.create(base), rubber=rubberMaps();
+  function* wheelMaterials(base) {
+    const materials=Object.create(base), rubber=yield* rubberMaps();
     const grain=canvas(128,128), pixels=grain.createImageData(128,128);
     let seed=8237;
     for(let i=0;i<pixels.data.length;i+=4){
@@ -376,8 +378,11 @@
     return group;
   }
 
-  window.TougeNeo86.buildWheels=function buildWheels(api) {
-    const materials=wheelMaterials(api.materials), wheel=makeWheel(api,materials), disc=makeDisc(api,materials);
+  window.TougeNeo86.buildWheels=window.TougeNeo86.staged(function* buildWheels(api) {
+    const materials=yield* wheelMaterials(api.materials);
+    yield;
+    const wheel=makeWheel(api,materials);yield;
+    const disc=makeDisc(api,materials);yield;
     const calipers=[makeCaliper(api,materials,true),makeCaliper(api,materials,false)];
     const {frontAxle,rearAxle,frontTrack,rearTrack,tireRadius}=api.dims;
     const wheels=[];
@@ -399,5 +404,5 @@
       }
     }
     return wheels;
-  };
+  });
 })();

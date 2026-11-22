@@ -36,7 +36,7 @@
       return mix(local,far,smooth(8+turnout*15,40+turnout*15,d));
     };
   }
-  function addTerrain(scene,course,groundAt,sky){
+  function* addTerrain(scene,course,groundAt,sky){
     const b=course.bounds,step=7,margin=260,x0=b.minX-margin,z0=b.minZ-margin;
     const nx=Math.ceil((b.maxX-b.minX+2*margin)/step),nz=Math.ceil((b.maxZ-b.minZ+2*margin)/step);
     const pos=[],colors=[],uv=[],edges=[],cover=[],idx=[],r=rng(371);
@@ -52,6 +52,7 @@
       color.copy(a).lerp(c,t).lerp(stone,Math.max(0,Math.sin(x*.031-z*.027))*.44);
       colors.push(color.r,color.g,color.b);
       if(i<nx && j<nz){const k=j*(nx+1)+i;idx.push(k,k+nx+1,k+1,k+1,k+nx+1,k+nx+2);}
+      if(i===nx && (j&7)===7)yield;
     }
     const geo=geometry(pos,idx,uv,colors);
     geo.setAttribute('rim',new T.Float32BufferAttribute(edges,1));
@@ -345,8 +346,27 @@
       this.position.needsUpdate=true;
     }
   }
+  const deferBuild=Symbol('defer world construction');
   class World {
-    constructor(canvas,activeCourse){
+    constructor(canvas,activeCourse,mode){
+      if(mode!==deferBuild){
+        const steps=this.build(canvas,activeCourse);
+        while(!steps.next().done){/* Editors and reflection bakers need the complete scene immediately. */}
+      }
+    }
+    static async create(canvas,course,pause=()=>new Promise(resolve=>setTimeout(resolve,0))){
+      const world=new this(canvas,course,deferBuild);
+      try{
+        let start=performance.now();
+        const steps=world.build(canvas,course);
+        while(!steps.next().done){
+          if(performance.now()-start<6)continue;
+          await pause();start=performance.now();
+        }
+        return world;
+      }catch(error){world.renderer?.dispose();throw error;}
+    }
+    *build(canvas,activeCourse){
       const course=activeCourse.physicalCourse;
       this.renderer=new T.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance',alpha:false});
       this.renderer.outputColorSpace=T.SRGBColorSpace;this.renderer.toneMapping=T.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.04;
@@ -356,20 +376,29 @@
       this.cameraMode=0;this.viewHeading=0;this.look=new T.Vector3();this.targetPos=new T.Vector3();
       this.reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       this.sky=TougeLighting.makeSky(this.scene,this.renderer);
+      this.sky.userData.setNight(activeCourse.night);
       this.sun=TougeLighting.makeSun(this.scene,innerWidth<760?1024:2048);
-      const groundAt=landHeight(course),forestFloor=addTerrain(this.scene,course,groundAt,this.sky);
+      yield;
+      const groundAt=landHeight(course),forestFloor=yield* addTerrain(this.scene,course,groundAt,this.sky);
+      yield;
       this.wetRoad=new TougeWetRoad(this.renderer,forestFloor);
+      yield;
       const road=addRoad(this.scene,course,groundAt,this.wetRoad);
       this.routeMarkings=road.markings;
       this.roadHeight=(x,z,hint)=>road.roadHeight(x,z,this.course.physicalIndex(hint));
+      yield;
       this.walls=addRetainingWalls(this.scene,course,groundAt,forestFloor);
-      window.addRockCuts(this.scene,course,forestFloor,groundAt);
-      this.forest=window.addForest(this.scene,course,groundAt,forestFloor,this.walls);
-      this.roadside=window.addRoadside(this.scene,course);
+      yield;
+      yield* window.addRockCuts.steps(this.scene,course,forestFloor,groundAt);
+      yield;
+      this.forest=yield* window.addForest.steps(this.scene,course,groundAt,forestFloor,this.walls);
+      this.roadside=yield* window.addRoadside.steps(this.scene,course);
       this.rig=new T.Group();this.rig.rotation.order='YXZ';this.scene.add(this.rig);
-      this.car=TougeNeo86.create();this.rig.add(this.car.group);
+      this.car=yield* TougeNeo86.create.steps();this.rig.add(this.car.group);
+      yield;
       TougeCarOcclusion.install(this.car);
-      this.carLighting=TougePassReflections.install(this.car.group,course);
+      this.carLighting=yield* TougePassReflections.install.steps(this.car.group,course);
+      yield;
       this.parkedStation=NaN;this.parkedMap=null;this.probeCenter=new T.Vector3();
       const {front,rear,frontTrack,rearTrack,radius}=this.car.axles;
       this.rollingScale=TougeDrive.rollingRadius/radius;
@@ -396,8 +425,69 @@
       this.wetRoad.exclude(this.effects.trails.mesh);
       this.shake=0;this.elapsed=0;this.cameraReady=false;
       this.scale=window.devicePixelRatio||1;this.slowTime=0;this.fastTime=0;
+      this.preparedCourses=new Set();
       this.resize();
       this.setCourse(activeCourse);
+    }
+    async warmGraphics(pause){
+      const {renderer,scene,camera}=this;
+      // The wet road and traffic mirrors render into linear targets. They use
+      // different shader variants from the final tone-mapped display pass.
+      const previous=renderer.getRenderTarget();
+      try{
+        renderer.setRenderTarget(this.wetRoad.target);
+        renderer.compile(scene,camera);
+      }finally{renderer.setRenderTarget(previous);}
+      await pause();
+      renderer.compile(scene,camera);await pause();
+      const materials=new Set(),maps=new Set();
+      const addMap=map=>{
+        if(map?.isTexture && !map.isRenderTargetTexture && map.image)maps.add(map);
+      };
+      scene.traverse(object=>{
+        addMap(object.map);
+        if(object.material)for(const mat of [].concat(object.material))materials.add(mat);
+        if(object.customDepthMaterial)materials.add(object.customDepthMaterial);
+      });
+      for(const mat of materials){
+        for(const value of Object.values(mat))addMap(value);
+        // onBeforeCompile binds the terrain scans and pass-probe atlas.
+        const uniforms=renderer.properties.get(mat).uniforms || mat.uniforms;
+        if(uniforms)for(const uniform of Object.values(uniforms))addMap(uniform.value);
+      }
+      let start=performance.now();
+      for(const map of maps){
+        renderer.initTexture(map);
+        if(performance.now()-start>=6){await pause();start=performance.now();}
+      }
+      await this.finishPrograms(pause);
+    }
+    async warmInspection(pause){
+      // A daylight showroom probe sees the scenery without the rig or its
+      // lights. Compile that capture layout only when the driver opens it.
+      const {scene,renderer}=this,scenery=new T.Scene();
+      scenery.environment=scene.environment;scenery.fog=scene.fog;
+      scenery.children=scene.children.filter(child=>child!==this.rig);
+      const previous=renderer.getRenderTarget();
+      try{renderer.setRenderTarget(this.wetRoad.target);renderer.compile(scenery,this.camera);}
+      finally{renderer.setRenderTarget(previous);}
+      await pause();await this.finishPrograms(pause);
+      this.inspectionReady=true;
+    }
+    async finishPrograms(pause){
+      // Three's parallel shader jobs run while images upload. Poll through
+      // the same cancellable scheduler as construction so a lost context
+      // cannot leave a linker waiting on programs from a discarded renderer.
+      const programs=this.renderer.info.programs;
+      while(programs.some(p=>p.isReady && !p.isReady())){
+        await new Promise(resolve=>setTimeout(resolve,8));await pause();
+      }
+      // Three defers uniform discovery and driver diagnostics to first use.
+      let start=performance.now();
+      for(const program of programs){
+        program.getUniforms?.();
+        if(performance.now()-start>=6){await pause();start=performance.now();}
+      }
     }
     setCourse(course){
       if(this.course===course)return;
@@ -419,6 +509,10 @@
       }
       this.parkedMap?.dispose();this.parkedMap=null;this.parkedStation=NaN;
       this.placementId=undefined;this.reset();
+      // At night the extinguished exhaust lights still belong to the lighting
+      // layout. Register them before warming the grid's reflection and paint
+      // programs so the first simulation tick uses the same shader variants.
+      this.effects.exhaust.advance(0,night);
     }
     resize(){
       const w=window.innerWidth,h=window.innerHeight;this.camera.aspect=w/h;this.camera.updateProjectionMatrix();
@@ -594,7 +688,10 @@
     render(dt,c,simulate,walkaround=null,orbit=null){
       this.elapsed+=dt;
       this.car.setDisplayMode(!!walkaround);
-      const placed=c.placementId!==this.placementId,cut=!this.cameraReady||placed||!!walkaround;
+      const placed=c.placementId!==this.placementId;
+      const viewCut=!this.cameraReady || placed || this.wasWalkaround!==!!walkaround;
+      const cut=viewCut || !!walkaround;
+      this.wasWalkaround=!!walkaround;
       if(placed){this.placementId=c.placementId;this.effects.cut();this.spray.clear();this.shake=0;}
       this.plantWheels(c);
       const rightG=c.lateralG??c.yaw*c.speed/9.81;
@@ -641,10 +738,22 @@
         this.effects.update(dt,c,this.wheelContacts,this.camera.position,this.spray.contactWater,this.course.night);
       }else this.effects.exhaust.clear();
       this.sky.position.copy(this.camera.position);
-      TougeLighting.trackSun(this.sun,c.x,this.rig.position.y,c.z,c.contact.fx,c.contact.fz);
+      // The depth map moves with the vehicle. At rest, keep the last map
+      // between wind updates; the live headlamp cones and contact shadow
+      // remain attached to the car. Camera jumps and wheel lock update now.
+      const eye=this.camera.position;
+      const newShadow=viewCut || this.elapsed-this.shadowTime>=.14 ||
+        (c.x-this.shadowX)**2+(c.z-this.shadowZ)**2>.045**2 ||
+        Math.abs(c.heading-this.shadowHeading)>.009 || Math.abs((c.steerAngle||0)-this.shadowSteer)>.055 ||
+        (eye.x-this.shadowEyeX)**2+(eye.z-this.shadowEyeZ)**2>3**2;
+      if(newShadow){
+        TougeLighting.trackSun(this.sun,c.x,this.rig.position.y,c.z,c.contact.fx,c.contact.fz);
+        this.shadowTime=this.elapsed;this.shadowX=c.x;this.shadowZ=c.z;this.shadowHeading=c.heading;
+        this.shadowSteer=c.steerAngle||0;this.shadowEyeX=eye.x;this.shadowEyeZ=eye.z;
+      }
       this.carLighting.update(this.course.physicalStation(c.contact.s));
       this.forest?.userData.update?.(this.camera.position);
-      this.roadside?.userData.updateView?.(this.renderer,this.camera,this.elapsed,this.rig.position);
+      const mirrorDrawn=this.roadside?.userData.updateView?.(this.renderer,this.camera,this.elapsed,this.rig.position);
       if(walkaround && this.sky.material.uniforms.ready.value && (Number.isNaN(this.parkedStation)||Math.abs(this.parkedStation-c.contact.s)>3)){
         this.parkedMap?.dispose();
         this.rig.localToWorld(this.probeCenter.set(0,.98,.08));
@@ -652,17 +761,24 @@
         this.parkedStation=c.contact.s;
       }
       this.carLighting.setParked(walkaround?this.parkedMap?.texture||null:null,this.probeCenter);
-      this.wetRoad.update(this.renderer,this.scene,this.camera,c,this.sky,dt,cut,this.scale);
-      this.renderer.render(this.scene,this.camera);
+      this.wetRoad.update(this.renderer,this.scene,this.camera,c,this.sky,dt,viewCut,this.scale,mirrorDrawn);
+      const shadow=this.renderer.shadowMap,auto=shadow.autoUpdate;
+      if(!newShadow)shadow.autoUpdate=false;
+      try{this.renderer.render(this.scene,this.camera);}
+      finally{shadow.autoUpdate=auto;}
     }
     measureFrame(dt) {
-      if(dt>.043){this.slowTime+=Math.min(dt,.1);this.fastTime=0;}
+      // A sustained run of missed 60 Hz presents matters before frame time
+      // reaches 43 ms. A tab return or a single long load says little about
+      // the pixel budget, so leave the resolution alone on those frames.
+      if(!(dt>0 && dt<.12))return;
+      if(dt>.025){this.slowTime+=dt*clamp((dt-.020)/.013,.35,1.4);this.fastTime=0;}
       else {
-        this.slowTime=Math.max(0,this.slowTime-dt*.65);
+        this.slowTime=Math.max(0,this.slowTime-dt*.60);
         this.fastTime=dt<.0195?Math.min(8,this.fastTime+dt):Math.max(0,this.fastTime-dt*2);
       }
-      if(this.slowTime>2.4 && this.scale>.76){
-        this.scale=Math.max(.75,this.scale*.82);this.slowTime=0;this.resize();
+      if(this.slowTime>1.5 && this.scale>.76){
+        this.scale=Math.max(.75,this.scale*.86);this.slowTime=0;this.resize();
       }else if(this.fastTime>=8 && this.scale<this.maxScale-.001){
         this.scale=Math.min(this.maxScale,this.scale*1.12);this.fastTime=0;this.resize();
       }

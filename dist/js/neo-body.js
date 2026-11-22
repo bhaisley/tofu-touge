@@ -757,13 +757,13 @@
     }
   }
 
-  N.buildBody=function buildBody(api){
+  N.buildBody=N.staged(function* buildBody(api){
     const body=coachwork(api);
-    sheetMetal(api,body);
-    sideFurniture(api,body);
-    cabinShell(api,body);
-    mirrors(api,body);
-    cockpit(api);
-    driver(api);
-  };
+    sheetMetal(api,body);yield;
+    sideFurniture(api,body);yield;
+    cabinShell(api,body);yield;
+    mirrors(api,body);yield;
+    cockpit(api);yield;
+    driver(api);yield;
+  });
 })();

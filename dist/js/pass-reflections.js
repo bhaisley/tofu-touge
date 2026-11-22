@@ -38,9 +38,74 @@
     return result;
   }
 
+  // The sun's depth texels cover roughly 5 cm. A traffic mirror or a puddle
+  // resolves even less of the wheel castings and closely spaced body seams.
+  // Collapse sub-texel triangles into a second index on the same vertices:
+  // all original normals, paint, UVs, lamp materials and suspension still apply.
+  function* passIndex(geometry, tire) {
+    const p=geometry.attributes.position.array,n=geometry.attributes.normal.array;
+    const uv=geometry.attributes.uv.array,index=geometry.index.array;
+    const cells=new Map(),vertices=new index.constructor(p.length/3);
+    const cell=.022;
+    for(let i=0;i<vertices.length;i++){
+      if((i&8191)===8191)yield;
+      const j=3*i,ax=Math.abs(n[j]),ay=Math.abs(n[j+1]),az=Math.abs(n[j+2]);
+      const axis=ax>ay && ax>az?0:ay>az?1:2;
+      // Keep opposite faces of thin sheets and the wrapping tire UV seam.
+      const face=axis*2+(n[j+axis]<0?1:0)+(tire && uv[2*i]>.96?6:0);
+      const x=Math.round(p[j]/cell)+256,y=Math.round(p[j+1]/cell)+256,z=Math.round(p[j+2]/cell)+256;
+      const key=((x*512+y)*512+z)*12+face;
+      const existing=cells.get(key);
+      if(existing===undefined){cells.set(key,i);vertices[i]=i;}else vertices[i]=existing;
+    }
+    const result=new index.constructor(index.length);
+    let count=0;
+    for(let j=0;j<index.length;j+=3){
+      if(j && j%49152===0)yield;
+      const a=vertices[index[j]],b=vertices[index[j+1]],c=vertices[index[j+2]];
+      if(a!==b && a!==c && b!==c){result[count++]=a;result[count++]=b;result[count++]=c;}
+    }
+    return count<index.length*.85?new T.BufferAttribute(result.slice(0,count),1):null;
+  }
+
+  function* installSteps(car,course) {
+    const meshes=[],indices=new Map();
+    car.traverse(mesh=>{
+      if(!mesh.isMesh)return;
+      const g=mesh.geometry,a=g.attributes;
+      const defaults=T.Object3D.prototype;
+      if(mesh.onBeforeRender!==defaults.onBeforeRender || mesh.onAfterRender!==defaults.onAfterRender ||
+         mesh.onBeforeShadow!==defaults.onBeforeShadow || mesh.onAfterShadow!==defaults.onAfterShadow)return;
+      if(g.index?.count>=3600 && !g.groups.length && a.position?.array && a.normal?.array && a.uv?.array)
+        meshes.push(mesh);
+    });
+    for(const mesh of meshes){
+      const geometry=mesh.geometry,original=geometry.index;
+      if(!indices.has(geometry))indices.set(geometry,yield* passIndex(geometry,mesh.name==='tire'));
+      const reduced=indices.get(geometry);
+      if(!reduced)continue;
+      // Three calls the per-object hooks immediately around each color or
+      // depth draw. Shared wheel geometries return to their exact primary
+      // index between draws and for picking, close-ups and authoring tools.
+      mesh.onBeforeRender=(_renderer,_scene,camera)=>{
+        if(camera.userData.tougeReflectionPass)geometry.setIndex(reduced);
+      };
+      mesh.onBeforeShadow=()=>geometry.setIndex(reduced);
+      mesh.onAfterRender=mesh.onAfterShadow=()=>{if(geometry.index!==original)geometry.setIndex(original);};
+    }
+    return installLighting(car,course);
+  }
+  function install(car,course) {
+    const build=installSteps(car,course);
+    let step=build.next();
+    while(!step.done)step=build.next();
+    return step.value;
+  }
+  install.steps=installSteps;
+
   // Local probes contain the actual ridge, branches, rail and verge at each station.
   // Capture is done when authoring the pass. Driving only interpolates two neighbours.
-  function install(car, course) {
+  function installLighting(car, course) {
     const grid = layout(course.length);
     let bounce=null,night=false;
     const uniforms = {

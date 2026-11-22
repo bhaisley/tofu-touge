@@ -87,7 +87,7 @@
   // Tufts grow in broken runs out of the wheel-worn shoulder, and then in
   // broader colonies on sunlit banks. The shop yard and shrine steps have
   // hard surfaces. Keep roots clear of the road, retaining walls and aprons.
-  function scatter(course,grid,walls,project,random) {
+  function* scatterSteps(course,grid,walls,project,random) {
     const plants=[[],[],[],[]],split=course.splits[0],finish=course.finish;
     function put(x,z,nearest,kind,height,width,canopy) {
       const y=project(x,z,nearest.y),step=Math.max(.18,width*.34);
@@ -101,8 +101,10 @@
       if(side>0 && s>finish-26 && s<finish+23 && offset<28)return true;
       return walls.some(w=>w.side===side && s>w.start-1 && s<w.end+1 && Math.abs(offset-w.offset)<1.22);
     }
+    let batch=0;
     for(const side of [-1,1]) {
       for(let s=2;s<course.length-2;s+=.75+random()*1.18) {
+        if((batch++ & 63)===0)yield;
         const off=course.half+.60+random()**1.52*6.6;
         const center=course.at(s,side*off),canopy=coverAt(grid,center.x,center.z);
         const stand=noise(s*.063,side*19+.6)+.21*noise(s*.17,side+4);
@@ -126,6 +128,7 @@
       // stands, so they don't form a dotted line beside the guardrail.
       const spacing=window.innerWidth<760?1.20:1;
       for(let s=2;s<course.length;s+=(3.4+random()*2.3)*spacing) {
+        if((batch++ & 7)===0)yield;
         for(let off=course.half+4+random()*3;off<61;off+=(3.5+random()*2.8)*spacing) {
           const station=s+(random()-.5)*3.8,p=course.at(station,side*off);
           const canopy=coverAt(grid,p.x,p.z);
@@ -149,5 +152,11 @@
     }
     return plants;
   }
-  window.TougeGrass={habitat,coverAt,surfaceMaps,surfaceShader,scatter};
+  function scatter(course,grid,walls,project,random) {
+    const steps=scatterSteps(course,grid,walls,project,random);
+    let result;
+    do {result=steps.next();} while(!result.done);
+    return result.value;
+  }
+  window.TougeGrass={habitat,coverAt,surfaceMaps,surfaceShader,scatter,scatterSteps};
 })();

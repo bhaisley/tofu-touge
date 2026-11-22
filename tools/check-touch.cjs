@@ -35,6 +35,7 @@ async function main() {
     await stage('downhill').tap();
     assert.match(await page.locator('#menu-record').innerText(), /02:08.25/);
     await stage('uphill').tap();
+    await page.waitForFunction(()=>document.body.dataset.stage==='uphill');
     for (const [width,height] of layouts) {
       await page.setViewportSize({width,height});
       const menu=await page.locator('#start-btn').boundingBox();

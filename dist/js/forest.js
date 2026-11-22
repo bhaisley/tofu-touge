@@ -368,22 +368,16 @@
 
   const scale = new T.Vector3();
 
-  function placeInstance(mesh, index, tree, matrix, tint, portrait) {
-    matrix.makeRotationY(portrait ? 0 : tree.turn);
+  function placePortrait(mesh, index, tree, matrix, tint) {
+    matrix.makeRotationY(0);
     matrix.scale(scale.set(tree.w, tree.h, tree.w));
-    if (tree.slopeX !== undefined) {
-      // Keep the lower edge of broad fern and bamboo colonies on the hillside.
-      const a = matrix.elements;
-      a[1] = a[0]*tree.slopeX + a[2]*tree.slopeZ;
-      a[9] = a[8]*tree.slopeX + a[10]*tree.slopeZ;
-    }
     matrix.setPosition(tree.x, tree.y, tree.z);
     mesh.setMatrixAt(index, matrix);
     tint.setRGB(tree.shade*tree.warm, tree.shade, tree.shade*(1.97-tree.warm));
     mesh.setColorAt(index, tint);
   }
 
-  function forestMeshes(group, trees, small, grasses, startEye) {
+  function* forestMeshes(group, trees, small, grasses, startEye) {
     const eye = startEye.clone();
     const light={fill:{value:1},direction:{value:new T.Vector2(.79,-.61)}};
     const mobile = window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 760;
@@ -428,18 +422,32 @@
       if (!stand) { stand = {x:x*farCell,z:z*farCell,trees:[]}; stands.set(key,stand); }
       stand.trees.push(tree);
     }
+    // Every stand has its own portrait/variant attribute. Its curved and
+    // flat cards share the two unit geometries' vertex and index buffers.
+    function portraitGeometry(template, treeCell) {
+      const geometry=new T.BufferGeometry();
+      geometry.setIndex(template.index);
+      for(const name in template.attributes) geometry.setAttribute(name,template.attributes[name]);
+      geometry.setAttribute('treeCell',treeCell);
+      geometry.boundingSphere=template.boundingSphere;
+      return geometry;
+    }
+    sheet.computeBoundingSphere();
+    flat.computeBoundingSphere();
+    let standNumber=0;
     for (const stand of stands.values()) {
-      const cells = new Float32Array(stand.trees.length*4), geo = sheet.clone();
+      if ((standNumber++ & 7) === 0) yield;
+      const cells = new Float32Array(stand.trees.length*4);
       const treeCell = new T.InstancedBufferAttribute(cells, 4);
-      geo.setAttribute('treeCell', treeCell);
+      const geo = portraitGeometry(sheet,treeCell);
       stand.curved = geo;
-      stand.flat = flat.clone().setAttribute('treeCell', treeCell);
+      stand.flat = portraitGeometry(flat,treeCell);
       const distant = new T.InstancedMesh(geo, farMat, stand.trees.length);
       distant.name = 'Mixed forest on the opposite slopes';
       distant.customDepthMaterial = farDepth;
       for (let i=0; i<stand.trees.length; i++) {
         const tree = stand.trees[i];
-        placeInstance(distant, i, tree, matrix, tint, true);
+        placePortrait(distant, i, tree, matrix, tint);
         cells[i*4] = tree.kind;
         cells[i*4+1] = tree.turn > Math.PI ? -1 : 1;
         cells[i*4+2] = tree.detail ? 1 : 0;
@@ -450,39 +458,65 @@
       stand.mesh = distant;
       delete stand.trees;
     }
-    sheet.dispose();
-    flat.dispose();
 
-    function pocket(shape, material, depthMaterial, name, capacity) {
-      const mesh = new T.InstancedMesh(shape, material, capacity);
+    function pocket(shape, material, depthMaterial, name, capacity, shared) {
+      const mesh = new T.InstancedMesh(shape, material, shared ? 0 : capacity);
       mesh.name = name;
-      mesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
-      mesh.instanceColor = new T.InstancedBufferAttribute(new Float32Array(capacity*3), 3);
-      mesh.instanceColor.setUsage(T.DynamicDrawUsage);
+      if (shared) {
+        mesh.instanceMatrix=shared.instanceMatrix;
+        mesh.instanceColor=shared.instanceColor;
+      } else {
+        mesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
+        mesh.instanceColor = new T.InstancedBufferAttribute(new Float32Array(capacity*3), 3);
+        mesh.instanceColor.setUsage(T.DynamicDrawUsage);
+      }
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.customDepthMaterial = depthMaterial;
       mesh.count = 0;
       group.add(mesh);
-      pockets.push(mesh);
+      pockets.push({mesh,shared});
       return mesh;
     }
-    function bin(item, meshes, radius) {
-      const key = Math.floor(item.x/cellSize) + ',' + Math.floor(item.z/cellSize);
-      let list = bins.get(key);
-      if (!list) { list = []; bins.set(key, list); }
-      list.push({item, meshes, radius});
+    const margin = 9;
+    function bin(item, meshes, radius, innerMeshes=null, innerRadius=0) {
+      const ix=Math.floor(item.x/cellSize), iz=Math.floor(item.z/cellSize);
+      let row=bins.get(ix);
+      if (!row) {row=new Map();bins.set(ix,row);}
+      let list=row.get(iz);
+      if (!list) {list=[];row.set(iz,list);}
+      const cosine=Math.cos(item.turn)*item.w, sine=Math.sin(item.turn)*item.w;
+      const riseX=item.slopeX===undefined ? 0 : cosine*item.slopeX-sine*item.slopeZ;
+      const riseZ=item.slopeX===undefined ? 0 : sine*item.slopeX+cosine*item.slopeZ;
+      list.push({x:item.x,y:item.y,z:item.z,height:item.h,cosine,sine,riseX,riseZ,
+        red:item.shade*item.warm,green:item.shade,blue:item.shade*(1.97-item.warm),
+        meshes,range:(radius+margin)**2,innerMeshes,innerRange:(innerRadius+margin)**2});
+    }
+    function fillInstances(plant, meshes) {
+      for(const mesh of meshes) {
+        const index=mesh.count++, a=mesh.instanceMatrix.array, m=index*16;
+        // InstancedMesh initializes its homogeneous rows to identity. Only
+        // these ten elements change when a plant enters the streamed window.
+        a[m]=plant.cosine; a[m+1]=plant.riseX; a[m+2]=-plant.sine;
+        a[m+5]=plant.height;
+        a[m+8]=plant.sine; a[m+9]=plant.riseZ; a[m+10]=plant.cosine;
+        a[m+12]=plant.x; a[m+13]=plant.y; a[m+14]=plant.z;
+        const color=mesh.instanceColor.array, c=index*3;
+        color[c]=plant.red; color[c+1]=plant.green; color[c+2]=plant.blue;
+      }
     }
     for (let k = 0; k < 4; k++) {
       const close = trees[k].filter(tree => tree.detail);
       for (let v = 0; v < 2; v++) {
+        yield;
         const arrangement = close.filter(tree => tree.variant === v);
         if (!arrangement.length) continue;
         const proto = treeShape(k, v);
-        const meshes = [
-          pocket(proto.wood, wood, trunkDepth, speciesNames[k] + ' trunks', arrangement.length),
-          pocket(proto.leaves, crowns, crownDepth, speciesNames[k] + ' needles and leaves', arrangement.length)
-        ];
+        const cap = yield* visibleCapacity([arrangement],lod.y);
+        const trunk = pocket(proto.wood,wood,trunkDepth,speciesNames[k]+' trunks',cap);
+        // Crowns and trunks stream precisely the same tree instances.
+        pocket(proto.leaves,crowns,crownDepth,speciesNames[k]+' needles and leaves',cap,trunk);
+        const meshes=[trunk];
         for (const tree of arrangement) bin(tree, meshes, lod.y);
       }
     }
@@ -490,10 +524,15 @@
       'Sasa undergrowth','Mountain azaleas','Bracken colonies','Broadleaf forest scrub'];
     for (let k=0; k<small.length; k++) {
       if (!small[k].length) continue;
-      const mound = k >= 4;
+      const mound = k >= 4, range=mound ? thicketLod.y : vergeLod.y;
+      const cap=yield* visibleCapacity([small[k]],range);
       const groundMesh = pocket(plantShape(k%4,mound), mound ? thickets : plants,
-        mound ? shrubDepth : lowDepth, plantNames[k], small[k].length);
-      for (const plant of small[k]) bin(plant, [groundMesh], mound ? thicketLod.y : vergeLod.y);
+        mound ? shrubDepth : lowDepth, plantNames[k], cap);
+      const meshes=[groundMesh];
+      for (let i=0;i<small[k].length;i++) {
+        if ((i & 511) === 0) yield;
+        bin(small[k][i],meshes,range);
+      }
     }
     const grassAtlas=artTexture('haruna-grasses.webp'),wind={value:0};
     const grassNames=['Cut roadside grasses','Mountain sedge','Young susuki','Silvergrass seed heads'];
@@ -501,9 +540,11 @@
     // Only a small window of the route can fill these instance buffers.
     // For any camera in a grid cell, all in-range plants fit in its nine
     // cells. Include empty centre cells between neighboring concentrations.
-    function visibleCapacity(lists,radius) {
-      const cell=radius+9,occupied=new Map(),totals=new Map();
-      for(const list of lists)for(const p of list) {
+    function* visibleCapacity(lists,radius) {
+      const cell=radius+margin,occupied=new Map(),totals=new Map();
+      for(const list of lists)for(let i=0;i<list.length;i++) {
+        if ((i & 2047) === 0) yield;
+        const p=list[i];
         const x=Math.floor(p.x/cell),z=Math.floor(p.z/cell),key=x+','+z;
         const bucket=occupied.get(key);
         if(bucket)bucket.count++;else occupied.set(key,{x,z,count:1});
@@ -518,26 +559,26 @@
     const blades=forestMaterial(new T.MeshLambertMaterial({vertexColors:true,side:T.DoubleSide}),'blades',eye,bladeRange,light);
     blades.userData.wind=wind;
     const base=cutout(grassAtlas,'grass',bladeRange);base.alphaTest=.22;base.userData.wind=wind;
-    const closeBlades=pocket(bladeTuft(),blades,null,'Folded verge grass blades',visibleCapacity(grasses.slice(0,2),bladeRange.y));
+    const closeBlades=pocket(bladeTuft(),blades,null,'Folded verge grass blades',yield* visibleCapacity(grasses.slice(0,2),bladeRange.y));
     closeBlades.castShadow=false;
     for(let k=0;k<grasses.length;k++) {
       if(!grasses[k].length)continue;
       const tall=k>1,end=(tall?72:42)*(mobile?.78:1),range=new T.Vector2(end*.56,end);
       const leaves=cutout(grassAtlas,'grass',range),shadows=depth(grassAtlas,'grass',range);
       leaves.alphaTest=.22;shadows.alphaTest=.34;leaves.userData.wind=shadows.userData.wind=wind;
-      const mesh=pocket(grassShape(k),leaves,shadows,grassNames[k],visibleCapacity([grasses[k]],end));
+      const mesh=pocket(grassShape(k),leaves,shadows,grassNames[k],yield* visibleCapacity([grasses[k]],end));
       const farMeshes=[mesh],nearMeshes=[closeBlades];
       if(k<2){
-        const crown=pocket(grassShape(k,true),base,null,grassNames[k]+' thatch',visibleCapacity([grasses[k]],bladeRange.y));
+        const crown=pocket(grassShape(k,true),base,null,grassNames[k]+' thatch',yield* visibleCapacity([grasses[k]],bladeRange.y));
         crown.castShadow=false;nearMeshes.push(crown);
       }
-      for(const plant of grasses[k]){
-        bin(plant,farMeshes,end);
-        if(k<2)bin(plant,nearMeshes,bladeRange.y);
+      for(let i=0;i<grasses[k].length;i++){
+        if ((i & 511) === 0) yield;
+        bin(grasses[k][i],farMeshes,end,k<2 ? nearMeshes : null,bladeRange.y);
       }
     }
     const previous = new T.Vector2(Infinity, Infinity);
-    const margin = 9, extent = thicketLod.y + margin;
+    const extent = thicketLod.y + margin;
     function update(view) {
       eye.copy(view);
       wind.value=performance.now()*.001;
@@ -550,26 +591,35 @@
         stand.mesh.castShadow = distance < (mobile ? 76*76 : 91*91);
         stand.mesh.geometry = distance < (lod.y+margin)**2 ? stand.curved : stand.flat;
       }
-      for (const mesh of pockets) mesh.count = 0;
+      for (const {mesh} of pockets) mesh.count = 0;
       const x0 = Math.floor((view.x-extent)/cellSize), x1 = Math.floor((view.x+extent)/cellSize);
       const z0 = Math.floor((view.z-extent)/cellSize), z1 = Math.floor((view.z+extent)/cellSize);
-      for (let ix=x0; ix<=x1; ix++) for (let iz=z0; iz<=z1; iz++) {
-        const list = bins.get(ix + ',' + iz);
-        if (!list) continue;
-        for (const {item, meshes, radius} of list) {
-          if ((item.x-view.x)**2 + (item.z-view.z)**2 > (radius+margin)**2) continue;
-          for (const mesh of meshes) placeInstance(mesh, mesh.count++, item, matrix, tint, false);
+      for (let ix=x0; ix<=x1; ix++) {
+        const row=bins.get(ix);
+        if(!row)continue;
+        for (let iz=z0; iz<=z1; iz++) {
+          const list = row.get(iz);
+          if (!list) continue;
+          for (const plant of list) {
+            const distance=(plant.x-view.x)**2+(plant.z-view.z)**2;
+            if (distance>plant.range) continue;
+            fillInstances(plant,plant.meshes);
+            if (plant.innerMeshes && distance<=plant.innerRange) fillInstances(plant,plant.innerMeshes);
+          }
         }
       }
-      for (const mesh of pockets) {
+      for (const {mesh,shared} of pockets) {
+        if (shared) mesh.count=shared.count;
         mesh.visible = mesh.count > 0;
         if (!mesh.visible) continue;
-        mesh.instanceMatrix.clearUpdateRanges();
-        mesh.instanceColor.clearUpdateRanges();
-        mesh.instanceMatrix.addUpdateRange(0, mesh.count*16);
-        mesh.instanceColor.addUpdateRange(0, mesh.count*3);
-        mesh.instanceMatrix.needsUpdate = true;
-        mesh.instanceColor.needsUpdate = true;
+        if (!shared) {
+          mesh.instanceMatrix.clearUpdateRanges();
+          mesh.instanceColor.clearUpdateRanges();
+          mesh.instanceMatrix.addUpdateRange(0, mesh.count*16);
+          mesh.instanceColor.addUpdateRange(0, mesh.count*3);
+          mesh.instanceMatrix.needsUpdate = true;
+          mesh.instanceColor.needsUpdate = true;
+        }
         mesh.computeBoundingSphere();
       }
     }
@@ -585,9 +635,47 @@
   // The drawn hillside is a sampled heightfield, and the shoulder covers its
   // edge. Project roots onto those triangles so bracken shows above the gravel
   // and trees stand on the visible slope between terrain samples.
-  function groundProjection(scene) {
-    const surfaces = [];
-    const cell = 24;
+  // The main mountainside is a regular triangle grid. Read its four actual
+  // vertices at each root, including both triangles in the narrow seam where
+  // their tolerances overlap. The shoulder and masonry still use their mesh bins.
+  function projectHeightfield(grid, pos) {
+    const {nx,nz,step}=grid, stride=nx+1, vertices=pos.array;
+    const x0=pos.getX(0), z0=pos.getZ(0), x1=pos.getX(nx), z1=pos.getZ(nz*stride);
+    // Allow the projection tolerance plus one unit of Float32 precision at
+    // the largest world coordinate when selecting adjacent cells at a seam.
+    const seam=.00001+Math.max(Math.abs(x0),Math.abs(x1),Math.abs(z0),Math.abs(z1))*2**-23/step;
+    return (x,z) => {
+      if(x<x0 || z<z0 || x>x1+step*seam || z>z1+step*seam) return -Infinity;
+      const gx=(x-x0)/step, gz=(z-z0)/step;
+      const i=Math.min(Math.floor(gx),nx-1), j=Math.min(Math.floor(gz),nz-1);
+      const fx=gx-i,fz=gz-j;
+      const i0=fx<seam?Math.max(0,i-1):i, i1=fx>1-seam?Math.min(nx-1,i+1):i;
+      const j0=fz<seam?Math.max(0,j-1):j, j1=fz>1-seam?Math.min(nz-1,j+1):j;
+      let high=-Infinity;
+      for(let iz=j0;iz<=j1;iz++) for(let ix=i0;ix<=i1;ix++) {
+        const a=(iz*stride+ix)*3, right=a+3, down=a+3*stride, opposite=down+3;
+        const width=vertices[right]-vertices[a], depth=vertices[down+2]-vertices[a+2];
+        const dx=x-vertices[a], dz=z-vertices[a+2], inv=1/(-width*depth);
+        // The index order is (a, down, right), then (right, down, opposite).
+        const u=-dz*width*inv, v=-depth*dx*inv;
+        if (u>=-.00001 && v>=-.00001 && u+v<=1.00001) {
+          const ay=vertices[a+1];
+          high=Math.max(high,ay+u*(vertices[down+1]-ay)+v*(vertices[right+1]-ay));
+        }
+        const fromRight=x-vertices[right];
+        const p=fromRight*depth*inv, q=(-width*dz-depth*fromRight)*inv;
+        if (p>=-.00001 && q>=-.00001 && p+q<=1.00001) {
+          const ay=vertices[right+1];
+          high=Math.max(high,ay+p*(vertices[down+1]-ay)+q*(vertices[opposite+1]-ay));
+        }
+      }
+      return high;
+    };
+  }
+
+  function* groundProjection(scene,grid) {
+    let terrain;
+    const surfaces = [], cell = 8, stride = 10;
     scene.updateMatrixWorld(true);
     const identity = new T.Matrix4();
     for (const mesh of scene.children) {
@@ -595,60 +683,83 @@
       const geometry = mesh.geometry, index = geometry.index;
       if (!index) continue;
       let pos = geometry.getAttribute('position');
+      if (grid && geometry.getAttribute('grassCover')===grid.cover && mesh.matrixWorld.equals(identity) &&
+          pos.count===(grid.nx+1)*(grid.nz+1)) {
+        terrain=projectHeightfield(grid,pos);
+        continue;
+      }
       if (!mesh.matrixWorld.equals(identity)) pos = pos.clone().applyMatrix4(mesh.matrixWorld);
       const box = new T.Box3().setFromBufferAttribute(pos);
       const x0 = box.min.x, z0 = box.min.z;
       const cols = Math.floor((box.max.x - x0) / cell) + 1;
       const rows = Math.floor((box.max.z - z0) / cell) + 1;
       const bins = new Array(cols * rows);
+      // Each grass root samples the rendered triangles three times. Cache
+      // their barycentric bases once, using the same floats as the renderer.
+      const triangles = new Float64Array(index.count / 3 * stride);
+      let used = 0;
       for (let i = 0; i < index.count; i += 3) {
+        if ((i % 6144) === 0) yield;
         const a = index.getX(i), b = index.getX(i + 1), c = index.getX(i + 2);
         const ax = pos.getX(a), bx = pos.getX(b), cx = pos.getX(c);
         const az = pos.getZ(a), bz = pos.getZ(b), cz = pos.getZ(c);
-        if ((bz - az) * (cx - ax) - (bx - ax) * (cz - az) <= 0.00001) continue;
+        const det = (bx-ax)*(cz-az) - (bz-az)*(cx-ax);
+        if (det >= -0.00001) continue;
+        const ay = pos.getY(a), offset = used;
+        used += stride;
+        triangles[offset] = ax;
+        triangles[offset+1] = az;
+        triangles[offset+2] = bx-ax;
+        triangles[offset+3] = bz-az;
+        triangles[offset+4] = cx-ax;
+        triangles[offset+5] = cz-az;
+        triangles[offset+6] = 1/det;
+        triangles[offset+7] = ay;
+        triangles[offset+8] = pos.getY(b)-ay;
+        triangles[offset+9] = pos.getY(c)-ay;
         const xmin = Math.floor((Math.min(ax, bx, cx) - x0) / cell);
         const xmax = Math.floor((Math.max(ax, bx, cx) - x0) / cell);
         const zmin = Math.floor((Math.min(az, bz, cz) - z0) / cell);
         const zmax = Math.floor((Math.max(az, bz, cz) - z0) / cell);
         for (let iz = zmin; iz <= zmax; iz++) for (let ix = xmin; ix <= xmax; ix++) {
           const key = iz * cols + ix;
-          (bins[key] || (bins[key] = [])).push(i);
+          (bins[key] || (bins[key] = [])).push(offset);
         }
       }
-      surfaces.push({index, pos, x0, z0, cols, rows, bins});
+      surfaces.push({triangles, x0, z0, cols, rows, bins});
     }
     return (x, z, fallback) => {
-      let high = -Infinity;
-      for (const {index, pos, x0, z0, cols, rows, bins} of surfaces) {
-        const ix = Math.floor((x - x0) / cell), iz = Math.floor((z - z0) / cell);
-        if (ix < 0 || iz < 0 || ix >= cols || iz >= rows) continue;
-        const triangles = bins[iz * cols + ix];
-        if (!triangles) continue;
-        for (const i of triangles) {
-          const a = index.getX(i), b = index.getX(i + 1), c = index.getX(i + 2);
-          const ax = pos.getX(a), az = pos.getZ(a);
-          const bx = pos.getX(b) - ax, bz = pos.getZ(b) - az;
-          const cx = pos.getX(c) - ax, cz = pos.getZ(c) - az;
-          const inv = 1 / (bx * cz - bz * cx);
-          const u = ((x - ax) * cz - (z - az) * cx) * inv;
-          const v = (bx * (z - az) - bz * (x - ax)) * inv;
-          if (u < -0.00001 || v < -0.00001 || u + v > 1.00001) continue;
-          const ay = pos.getY(a);
-          high = Math.max(high, ay + u * (pos.getY(b) - ay) + v * (pos.getY(c) - ay));
+      let high = terrain ? terrain(x,z) : -Infinity;
+      for (const surface of surfaces) {
+        const ix = Math.floor((x - surface.x0) / cell), iz = Math.floor((z - surface.z0) / cell);
+        if (ix < 0 || iz < 0 || ix >= surface.cols || iz >= surface.rows) continue;
+        const offsets = surface.bins[iz * surface.cols + ix];
+        if (!offsets) continue;
+        const a = surface.triangles;
+        for (const n of offsets) {
+          const dx = x-a[n], dz = z-a[n+1], inv = a[n+6];
+          const u = (dx*a[n+5] - dz*a[n+4])*inv;
+          const v = (a[n+2]*dz - a[n+3]*dx)*inv;
+          if (u >= -0.00001 && v >= -0.00001 && u+v <= 1.00001) {
+            high = Math.max(high, a[n+7] + u*a[n+8] + v*a[n+9]);
+          }
         }
       }
       return Number.isFinite(high) ? high : fallback;
     };
   }
 
-  function addCanopyShade(group, patches, drawnHeight, groundAt) {
+  function* addCanopyShade(group, patches, drawnHeight, groundAt) {
     const positions = [], colors = [], indices = [];
     const count = 8;
-    for (const patch of patches) {
+    for (let n=0;n<patches.length;n++) {
+      if ((n & 63) === 0) yield;
+      const patch=patches[n];
       const first = positions.length / 3, r = clamp(patch.width * .34, 1.25, 4.1);
       const x = patch.x + r * .04, z = patch.z - r * .03;
       const vertex = (px, pz, alpha) => {
-        positions.push(px, drawnHeight(px, pz, groundAt(px, pz)) + 0.045, pz);
+        const surface=drawnHeight(px,pz,NaN);
+        positions.push(px, (Number.isFinite(surface) ? surface : groundAt(px,pz)) + 0.045, pz);
         colors.push(0.022, 0.033, 0.032, alpha);
       };
       vertex(x, z, .30);
@@ -675,7 +786,7 @@
     group.add(shade);
   }
 
-  function shadeForestFloor(scene, trees) {
+  function* shadeForestFloor(scene, trees) {
     const ground = scene.getObjectByName('Cedar forest floor');
     if (!ground) return;
     const positions = ground.geometry.getAttribute('position');
@@ -686,7 +797,9 @@
     // Add a stand's canopies only to the ground cells that they cover.
     // This keeps the distant valley and open verges brighter than the shade
     // beneath a cedar grove, including where real-time shadows end.
+    let placed=0;
     for (const stand of trees) for (const tree of stand) {
+      if ((placed++ & 511) === 0) yield;
       if (tree.h < 3.4) continue;
       const r = clamp(2.8 + tree.w*.59, 4.7, 12);
       const disc = {x:tree.x, z:tree.z, inv:1/(r*r), density:clamp(tree.h/13,.35,1)};
@@ -700,6 +813,7 @@
       }
     }
     for (let i=0; i<positions.count; i++) {
+      if ((i & 2047) === 0) yield;
       const x=positions.getX(i), z=positions.getZ(i);
       const discs=coverage.get(Math.floor(x/cell)+','+Math.floor(z/cell));
       if (!discs) continue;
@@ -717,9 +831,11 @@
     grass.needsUpdate=true;
   }
 
-  function plantColonies(trees, small, course, drawnHeight, inClearing) {
+  function* plantColonies(trees, small, course, drawnHeight, inClearing) {
     const rand=randomStream(4196615);
+    let row=0;
     for (const stand of trees) for (const tree of stand) {
+      if ((row++ & 511) === 0) yield;
       if (tree.verge>78 || tree.h<4.5 || rand()>.60) continue;
       const angle=rand()*TAU, radius=2.3+rand()*6;
       const cx=tree.x+Math.cos(angle)*radius, cz=tree.z+Math.sin(angle)*radius;
@@ -748,6 +864,7 @@
     // Dense Sasa follows breaks in the canopy. A broken strip and a second
     // offset row leave short sightlines into the forest between colonies.
     for (let s=10;s<course.length-8;s+=1.9+rand()*2.4) for (const side of [-1,1]) {
+      if ((row++ & 127) === 0) yield;
       const cover=.48+.31*Math.sin(s*.046+side*2.4)+.22*Math.sin(s*.107+side);
       if (cover<.49 || rand()>cover+.07) continue;
       const verge=course.half+3.8+1.0*Math.sin(s*.074+side)+rand()*2.6;
@@ -769,11 +886,11 @@
     }
   }
 
-  function addForest(scene, course, groundAt, forestFloor, walls) {
+  function* forestSteps(scene, course, groundAt, forestFloor, walls) {
     const group = new T.Group();
     group.name = 'Haruna sugi forest';
     const rng = randomStream(861977);
-    const drawnHeight = groundProjection(scene);
+    const drawnHeight = yield* groundProjection(scene,forestFloor);
     const trees = [[], [], [], []], small = Array.from({length:8},()=>[]), shadePatches = [];
     const {minX, maxX, minZ, maxZ} = course.bounds;
     const inClearing = p => (p.s > course.finish - 103 && p.distance < 31) ||
@@ -803,6 +920,7 @@
       return w;
     }
     for (let gz = minZ - margin; gz < maxZ + margin; gz += cell) {
+      yield;
       for (let gx = minX - margin; gx < maxX + margin; gx += cell) {
         const x = gx + (0.02 + 0.96 * rng()) * cell, z = gz + (0.02 + 0.96 * rng()) * cell;
         const p = course.nearest(x, z);
@@ -844,7 +962,9 @@
 
     // Small patches follow the shoulder and spill around the forest edge.
     // Every member checks the closest stretch of tarmac at tight switchbacks.
+    let patchRow=0;
     for (let s = 4; s < course.length; s += 2.40 + rng() * 3.25) {
+      if ((patchRow++ & 63) === 0) yield;
       for (const side of [-1, 1]) {
         const patch = 0.5 + 0.5 * Math.sin(s * 0.043 + side * 2.8 + Math.sin(s * 0.077));
         if (rng() > 0.28 + patch * 0.58) continue;
@@ -867,8 +987,8 @@
       }
     }
 
-    plantColonies(trees, small, course, drawnHeight, inClearing);
-    shadeForestFloor(scene, trees);
+    yield* plantColonies(trees, small, course, drawnHeight, inClearing);
+    yield* shadeForestFloor(scene, trees);
     if(forestFloor.fill){
       const {position,grassCover}=forestFloor.fill.attributes;
       for(let i=0;i<position.count;i++){
@@ -878,12 +998,19 @@
       }
       grassCover.needsUpdate=true;
     }
-    const grasses=TougeGrass.scatter(course,forestFloor,walls,drawnHeight,randomStream(0x4a718));
-    forestMeshes(group, trees, small, grasses, course.at(course.start));
-    addCanopyShade(group, shadePatches, drawnHeight, groundAt);
+    const grasses=yield* TougeGrass.scatterSteps(course,forestFloor,walls,drawnHeight,randomStream(0x4a718));
+    yield* forestMeshes(group, trees, small, grasses, course.at(course.start));
+    yield* addCanopyShade(group, shadePatches, drawnHeight, groundAt);
     scene.add(group);
     return group;
   }
 
+  function addForest(scene, course, groundAt, forestFloor, walls) {
+    const steps=forestSteps(scene,course,groundAt,forestFloor,walls);
+    let result;
+    do {result=steps.next();} while(!result.done);
+    return result.value;
+  }
+  addForest.steps = forestSteps;
   window.addForest = addForest;
 })();

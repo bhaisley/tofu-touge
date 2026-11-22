@@ -52,9 +52,11 @@
     return faces;
   }
 
-  function findExposures(course, height, random) {
+  function* findExposures(course, height, random) {
     const sites = [];
+    let row=0;
     for (let s=course.start+5;s<course.finish-35;s+=8.3) {
+      if ((row++ & 31) === 0) yield;
       const p=course.sample(s);
       for (const side of [-1,1]) for (const band of [18,24,30,36]) {
         const d=band+(random()-.5)*3.2;
@@ -90,16 +92,20 @@
     return chosen;
   }
 
-  function addRockCuts(scene,course,forestFloor,groundAt) {
+  function* rockCutSteps(scene,course,forestFloor,groundAt) {
     const random=randomSource(0x9bc73),height=forestFloor?.drawnHeight || groundAt;
     const group=new T.Group();group.name='Exposed Haruna bedrock';
-    const shapes=Array.from({length:7},()=>fracturedBlock(random));
+    const shapes=[];
+    for(let i=0;i<7;i++) {
+      yield;
+      shapes.push(fracturedBlock(random));
+    }
     const material=TougeLighting.scannedSurface('haruna-volcanic',.88,{
       vertexColors:true,roughness:.94,metalness:0,envMapIntensity:.55
     });
     material.name='Fractured volcanic rock';
     const chunks=new Map(), tmp=new T.Vector3();
-    const faces=findExposures(course,height,random);
+    const faces=yield* findExposures(course,height,random);
     function block(cx,cz,gx,gz,halfLength,halfDepth,halfHeight,bury,slopeFit) {
       const nearest=course.nearest(cx,cz);
       const radius=Math.hypot(halfLength,halfDepth)*1.20;
@@ -169,6 +175,7 @@
       }
     }
     for (const site of faces) {
+      yield;
       const {x,z,gx,gz,grade}=site,tx=gz,tz=-gx;
       const ledges=2+Math.floor(random()*3),span=8+random()*11;
       for (let i=0;i<ledges;i++) {
@@ -188,6 +195,7 @@
       }
     }
     for (const chunk of chunks.values()) {
+      yield;
       const geometry=new T.BufferGeometry();
       geometry.setAttribute('position',new T.Float32BufferAttribute(chunk.positions,3));
       geometry.setAttribute('normal',new T.Float32BufferAttribute(chunk.normals,3));
@@ -200,5 +208,12 @@
     scene.add(group);
     return group;
   }
+  function addRockCuts(scene,course,forestFloor,groundAt) {
+    const steps=rockCutSteps(scene,course,forestFloor,groundAt);
+    let result;
+    do {result=steps.next();} while(!result.done);
+    return result.value;
+  }
+  addRockCuts.steps=rockCutSteps;
   window.addRockCuts=addRockCuts;
 })();

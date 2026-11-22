@@ -46,6 +46,7 @@
       this.radio = radio || (musicUrl ? new TougeRadio([{id:"night-delivery", title:"Night Delivery", url:musicUrl}]) : null);
       this.musicPreview = false;
       this.context = null;
+      this.preloadedCue = null;
       this.active = false;
       this.enabled = true;
       this.musicEnabled = true;
@@ -71,6 +72,15 @@
       };
     }
 
+    prepareOutput() {
+      if (this.context || this.preloadedCue || !(window.AudioContext || window.webkitAudioContext)) return;
+      // Buffering the 5 KB shift cue lets the browser discover its output
+      // device asynchronously. The live context still opens on a gesture.
+      const cue = this.preloadedCue = document.createElement("audio");
+      cue.preload = "auto";
+      cue.src = soundUrl("shift");
+    }
+
     // Called directly in a keyboard, mouse or touch gesture.
     unlock() {
       const Audio = window.AudioContext || window.webkitAudioContext;
@@ -81,6 +91,7 @@
         } catch {
           return Promise.resolve(false);
         }
+        this.preloadedCue = null;
         const ctx = this.context;
         this.master = ctx.createGain();
         this.master.gain.value = this.enabled ? 0.88 : 0;

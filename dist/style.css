@@ -1,6 +1,6 @@
-@font-face{font-family:Race;src:url('assets/fonts/BarlowCondensed-BlackItalic.ttf') format('truetype');font-weight:900;font-style:italic;font-display:swap}
-@font-face{font-family:Cond;src:url('assets/fonts/BarlowCondensed-Bold.ttf') format('truetype');font-weight:700;font-display:swap}
-@font-face{font-family:Barlow;src:url('assets/fonts/Barlow-SemiBold.ttf') format('truetype');font-weight:600;font-display:swap}
+@font-face{font-family:Race;src:url('assets/fonts/BarlowCondensed-BlackItalic.woff2') format('woff2');font-weight:900;font-style:italic;font-display:swap}
+@font-face{font-family:Cond;src:url('assets/fonts/BarlowCondensed-Bold.woff2') format('woff2');font-weight:700;font-display:swap}
+@font-face{font-family:Barlow;src:url('assets/fonts/Barlow-SemiBold.woff2') format('woff2');font-weight:600;font-display:swap}
 :root{color-scheme:dark;--ink:#111a1e;--ivory:#f6f2e9;--orange:#ff6843;--muted:#b6c0bf;--line:rgba(237,243,236,.24);--edge:clamp(24px,5.3vw,100px);--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 *{box-sizing:border-box}
 html,body{width:100%;height:100%;margin:0;overflow:hidden}
@@ -75,6 +75,11 @@ h1{font:italic 900 clamp(6.35rem,min(11.5vw,17.7vh),12.8rem)/.77 Race,Impact,san
 .primary:hover{background:#ff8961;border-color:#ff8961;transform:translateY(-1px)}
 .primary:active,.secondary:active{transform:translateY(1px)}
 .play-icon{width:0;height:0;border-block:6px solid transparent;border-left:9px solid currentColor}
+#start-btn[aria-busy="true"] .play-icon{width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%}
+@media(prefers-reduced-motion:no-preference){
+  #start-btn[aria-busy="true"] .play-icon{animation:loading-turn .8s linear infinite}
+}
+@keyframes loading-turn{to{transform:rotate(1turn)}}
 .primary kbd{font:600 .64rem var(--mono);text-transform:uppercase;letter-spacing:.04em;border:1px solid #31221d60;padding:3px 4px;margin-left:8px}
 .secondary,.dialog-action{color:#f0f1ea;background:rgba(13,24,29,.69);border-color:rgba(226,231,222,.42);font:700 1.12rem Cond,sans-serif;text-transform:uppercase;letter-spacing:.055em}
 .keyboard-icon{width:18px;height:13px;border:1.4px solid currentColor;border-radius:2px;position:relative}

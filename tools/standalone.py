@@ -28,18 +28,22 @@ def main():
     html = re.sub(r'  <link rel="preload"[^>]+>\n', "", html)
     html = html.replace('<link rel="stylesheet" href="style.css">', "<style>\n" + css + "\n</style>")
 
-    assets = {
-        "TougeMusicURLs": {
-            p.name: data_url(p) for p in sorted((DIST / "assets/music").glob("*.mp3"))
-        },
-        "TougeArtURLs": {
-            p.name: data_url(p) for p in sorted((DIST / "assets/art").glob("*.webp"))
-            if p.name not in {"haruna-dawn.webp", "haruna-night.webp"}
-        },
-        "TougeEmbeddedAudio": {
-            p.name: data_url(p) for p in sorted((DIST / "assets/sfx").glob("*.wav"))
-        },
+    banks = {
+        "TougeMusicURLs": "assets/music/*.mp3",
+        "TougeArtURLs": "assets/art/*.webp",
+        "TougeEmbeddedAudio": "assets/sfx/*.wav",
     }
+    # Covers already live in the stylesheet. Keep the remaining binary assets
+    # outside executable JavaScript so opening the game does not compile 28 MB
+    # of string literals before the controls can respond.
+    payload = []
+    for bank, pattern in banks.items():
+        for asset in sorted(DIST.glob(pattern)):
+            if asset.name not in {"haruna-dawn.webp", "haruna-night.webp"}:
+                payload.append(
+                    f'<script type="application/octet-stream" data-bank="{bank}" '
+                    f'data-name="{asset.name}">{data_url(asset)}</script>'
+                )
     licenses = {
         "Three.js (MIT)": (DIST / "vendor/THREE-LICENSE.txt").read_text(encoding="utf-8"),
         "Barlow (SIL OFL)": (DIST / "assets/fonts/OFL.txt").read_text(encoding="utf-8"),
@@ -54,16 +58,30 @@ def main():
             "Aerial Grass Rock, Rob Tuytel": "https://polyhaven.com/a/aerial_grass_rock",
         },
     }
-    bootstrap = "<script>Object.assign(window," + json.dumps(assets, separators=(",", ":")) + ");</script>"
-    bootstrap += """<script>
-      window.TougeMusicURL = TougeMusicURLs['night-delivery.mp3'];
-      window.TougeSkyURL = TougeArtURLs['haruna-sky.webp'];
-      window.TougeGroundURL = TougeArtURLs['forest-floor.webp'];
-      window.TougeTreesURL = TougeArtURLs['haruna-trees.webp'];
+    bootstrap = """<script>
+    for (const asset of document.querySelectorAll('script[data-bank]')) {
+      const bank = window[asset.dataset.bank] ||= {};
+      const name = asset.dataset.name;
+      Object.defineProperty(bank, name, {
+        enumerable: true, configurable: true, get() {
+          const url = asset.textContent;
+          Object.defineProperty(bank, name, { value: url, enumerable: true });
+          asset.remove();
+          return url;
+        }
+      });
+    }
+    Object.defineProperties(window, {
+      TougeMusicURL: {get: () => TougeMusicURLs['night-delivery.mp3']},
+      TougeSkyURL: {get: () => TougeArtURLs['haruna-sky.webp']},
+      TougeGroundURL: {get: () => TougeArtURLs['forest-floor.webp']},
+      TougeTreesURL: {get: () => TougeArtURLs['haruna-trees.webp']}
+    });
     </script>"""
     notices = '<script type="application/json" id="third-party-notices">' + json.dumps(licenses) + "</script>"
-    html = html.replace('<script src="vendor/three.min.js">', notices + "\n" + bootstrap + '\n<script src="vendor/three.min.js">')
-    html = re.sub(r'<script src="([^"]+)"></script>', inline_scripts, html)
+    first_script = '<script defer src="vendor/three.min.js">'
+    html = html.replace(first_script, "\n".join([notices, *payload, bootstrap, first_script]))
+    html = re.sub(r'<script defer src="([^"]+)"></script>', inline_scripts, html)
     out = PROJECT / "Tofu Touge.html"
     out.write_text(html, encoding="utf-8")
     print(f"{out.name} · {out.stat().st_size:,} bytes")

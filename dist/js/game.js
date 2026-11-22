@@ -14,12 +14,18 @@
   const radio=new TougeRadio(), audio=new TougeAudio({radio});
   const keys=new Set(), fingers=new Map(), previousButtons=new Map();
   const actions=new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD','Space']);
-  let world=null,state='menu',dialog='',resumeTo='racing',controlParent='menu',loading=false;
+  let world=null,state='menu',dialog='',resumeTo='racing',controlParent='menu',loading=null;
+  let preparation=null,artReady=null,resumePreparation=null,warmScheduled=false,contextLost=false;
+  let loadChannel;
+  const loadTurns=[];
   const walkaround=new TougeCarWalkaround(byId('world'),()=>state==='viewcar');
   const canOrbit=()=>state==='racing' && !dialog && world?.cameraMode<2;
   const chaseOrbit=new TougeChaseOrbit(byId('world'),canOrbit);
   let count=3.1,accumulator=0,prevTime=0,lastHud=0,toastTime=0,controlTab='keyboard',focusReturn=null;
   const fixed=1/120, settingsKey='tofu-touge-settings-v1';
+  // Title controls can run while the remaining graphics scripts download.
+  const scriptsReady=document.readyState==='complete'?Promise.resolve():
+    new Promise(resolve=>document.addEventListener('DOMContentLoaded',resolve,{once:true}));
   function read(key){
     try {const data=JSON.parse(localStorage.getItem(key));return data && typeof data==='object' && !Array.isArray(data)?data:{};}
     catch {return {};}
@@ -46,6 +52,7 @@
   const fmt=n=>Math.round(n).toLocaleString('en-US');
   const displayDistance=downhill.distance/1000;
   const stageButtons=document.querySelectorAll('.course-picker button');
+  let hudMapBounds=null;
   const startLabel=()=>course.night?'Start ascent':'Start descent';
   function showCourse(){
     const night=course.night,stage=night?'uphill':'downhill';
@@ -65,15 +72,18 @@
   }
   function selectStage(stage){
     const next=stage==='uphill'?downhill.reversed():downhill;
-    if(loading || state!=='menu' || dialog || course===next)return;
+    if(state!=='menu' || dialog || course===next)return;
+    clearEntry();
     course=next;drive.course=course;drive.reset();renderPose.capture(drive);
     records=read(recordsKey());settings.stage=stage;write(settingsKey,settings);
-    showCourse();
+    showCourse();schedulePass();
   }
   for(const button of stageButtons)button.addEventListener('click',()=>selectStage(button.dataset.stage));
   function showRecord(){const el=byId('menu-record');el.hidden=!Number.isFinite(records.time);if(!el.hidden)el.textContent='PERSONAL BEST  '+timeStr(records.time);}
   function paintMap(canvas,local=false) {
-    const bounds=canvas.getBoundingClientRect();if(!bounds.width)return;
+    const bounds=(local && hudMapBounds)||canvas.getBoundingClientRect();
+    if(!bounds.width)return;
+    if(local)hudMapBounds=bounds;
     const ratio=Math.min(devicePixelRatio||1,2.25),w=bounds.width,h=bounds.height;
     if(canvas.width!==Math.round(w*ratio)||canvas.height!==Math.round(h*ratio)){canvas.width=Math.round(w*ratio);canvas.height=Math.round(h*ratio);}
     const c=canvas.getContext('2d');c.setTransform(ratio,0,0,ratio,0,0);c.clearRect(0,0,w,h);c.lineCap='round';c.lineJoin='round';
@@ -89,10 +99,18 @@
     }
     const p=drive.contact,scale=Math.min(w/143,h/90),baseX=w*.5,baseY=h*.80;
     const plot=(x,z)=>[baseX+((x-drive.x)*p.rx+(z-drive.z)*p.rz)*scale,baseY-((x-drive.x)*p.fx+(z-drive.z)*p.fz)*scale];
-    const path=(lo,hi,col,width)=>{c.strokeStyle=col;c.lineWidth=width;c.beginPath();
-      for(let s=lo,i=0;s<=hi;s+=3,i++){const q=course.sample(s),v=plot(q.x,q.z);if(i===0)c.moveTo(...v);else c.lineTo(...v);}c.stroke();};
     const lo=Math.max(course.start,p.s-50),hi=Math.min(course.finish,p.s+260);
-    path(lo,hi,'#0e171d',6);path(lo,hi,'#dfdfcf',3.0);
+    // Only the road centerline is needed for the map, and both strokes follow it.
+    c.beginPath();
+    for(let s=lo;s<=hi;s+=3){
+      const i=Math.min(course.segments-1,Math.floor(s/course.step)),a=course.points[i],b=course.points[i+1];
+      const t=(s-a.s)/course.step;
+      const dx=a.x+(b.x-a.x)*t-drive.x,dz=a.z+(b.z-a.z)*t-drive.z;
+      const x=baseX+(dx*p.rx+dz*p.rz)*scale,y=baseY-(dx*p.fx+dz*p.fz)*scale;
+      if(s===lo)c.moveTo(x,y);else c.lineTo(x,y);
+    }
+    c.lineWidth=6;c.strokeStyle='#0e171d';c.stroke();
+    c.lineWidth=3;c.strokeStyle='#dfdfcf';c.stroke();
     const next=course.splits[Math.min(2,drive.sector)];
     if(next-p.s<160){const goal=course.sample(next),[x,y]=plot(goal.x,goal.z);c.fillStyle='#ffbd84';c.fillRect(x-3,y-3,6,6);}
     c.save();c.translate(baseX,baseY);c.rotate(drive.heading-p.heading);c.fillStyle='#ff6943';c.strokeStyle='#162128';c.lineWidth=2;
@@ -151,6 +169,7 @@
   function fullChanged(){fullBtn.setAttribute('aria-label',fullscreen()?'Exit fullscreen':'Enter fullscreen');}
   document.addEventListener('fullscreenchange',fullChanged);document.addEventListener('webkitfullscreenchange',fullChanged);
   function openDialog(kind,markup,allowClose=true){
+    clearEntry();
     if(!dialog)focusReturn=document.activeElement;
     dialog=kind;byId('dialog-content').innerHTML=markup;byId('dialog-close').hidden=!allowClose;
     byId('veil').hidden=false;document.body.classList.add('modal-open');
@@ -165,62 +184,152 @@
     byId('walkaround').inert=false;
     if(returnFocus&&focusReturn?.isConnected)focusReturn.focus({preventScroll:true});
     focusReturn=null;
+    resumePreparation?.();schedulePass();
   }
   const bind=(id,fn)=>byId(id).addEventListener('click',fn);
   function menu(){
+    clearEntry();
     clearInput();audio.setActive(false);closeDialog(false);stateTo('menu');accumulator=0;
     byId('countdown').hidden=true;byId('chain').hidden=true;byId('toast').hidden=true;showRecord();paintMap(byId('menu-map'));
     byId('start-btn').focus({preventScroll:true});
+    schedulePass();
   }
   function toast(msg,seconds=1.45){setText('toast',msg);byId('toast').hidden=false;toastTime=seconds;}
   function showError(){
-    audio.setActive(false);stateTo('menu');openDialog('error','<p class="dialog-kicker">GRAPHICS</p><h2 id="dialog-title">Renderer unavailable</h2><p class="dialog-tip">This pass needs WebGL and hardware acceleration. Enable graphics acceleration in your browser or open the game in a WebGL-capable browser.</p><div class="dialog-buttons"><button id="error-back" class="primary">Main menu</button></div>');
+    closeDialog(false);audio.setActive(false);stateTo('menu');openDialog('error','<p class="dialog-kicker">GRAPHICS</p><h2 id="dialog-title">Renderer unavailable</h2><p class="dialog-tip">This pass needs WebGL and hardware acceleration. Enable graphics acceleration in your browser or open the game in a WebGL-capable browser.</p><div class="dialog-buttons"><button id="error-back" class="primary">Main menu</button></div>');
     bind('error-back',menu);
   }
-  async function loadPass(){
-    const manager=THREE.DefaultLoadingManager,previous=manager.onLoad;
-    let finish;
-    const ready=new Promise(resolve=>{finish=resolve;});
-    const complete=()=>{finish();previous?.call(manager);};
-    manager.onLoad=complete;
-    try{
-      const pass=new TougeWorld(byId('world'),course);
-      // Keep the cover on screen until the sky, pavement and foliage have
-      // decoded. The countdown's first frame then uses the finished materials.
-      await ready;
-      return pass;
-    }finally{
-      if(manager.onLoad===complete)manager.onLoad=previous;
+  function clearEntry(){
+    if(!loading)return;
+    loading=null;showEntry();
+  }
+  function showEntry(){
+    const start=byId('start-btn'),car=byId('view-car');
+    start.disabled=loading?.inspect===false;car.disabled=loading?.inspect===true;
+    start.children[1].textContent=start.disabled?'Loading pass':startLabel();
+    car.firstElementChild.firstChild.nodeValue=car.disabled?'LOADING CAR ':'VIEW CAR ';
+    start.setAttribute('aria-busy',String(start.disabled));car.setAttribute('aria-busy',String(car.disabled));
+  }
+  function artworkReady(manager){
+    if(!artReady)artReady=new Promise(resolve=>{
+      const previous=manager.onLoad;
+      manager.onLoad=function complete(){
+        if(manager.onLoad===complete)manager.onLoad=previous;
+        artReady=null;resolve();previous?.call(manager);
+      };
+    });
+    return artReady;
+  }
+  function checkJob(job){
+    if(job!==preparation)throw new DOMException('Graphics preparation superseded','AbortError');
+  }
+  function postLoadTurn(){
+    if(!loadChannel){
+      loadChannel=new MessageChannel();
+      loadChannel.port1.onmessage=()=>loadTurns.shift()();
     }
+    return new Promise(resolve=>{loadTurns.push(resolve);loadChannel.port2.postMessage(null);});
+  }
+  async function prepareTurn(job){
+    do{
+      checkJob(job);
+      if(document.hidden || (dialog && !loading)){
+        await new Promise(resolve=>{resumePreparation=resolve;});
+        resumePreparation=null;
+      }else if(!loading && window.requestIdleCallback){
+        await new Promise(resolve=>requestIdleCallback(resolve,{timeout:160}));
+      }else if(window.scheduler?.yield){
+        await scheduler.yield();
+      }else if(loading && window.MessageChannel){
+        // A posted task lets input and painting run between batches without
+        // WebKit's recurring timer delay while a driver is waiting to enter.
+        await postLoadTurn();
+      }else{
+        await new Promise(resolve=>setTimeout(resolve,0));
+      }
+      checkJob(job);
+    }while(document.hidden || (dialog && !loading));
+  }
+  async function preparePass(job){
+    const pause=()=>prepareTurn(job);
+    await scriptsReady;
+    await pause();
+    if(!world){
+      const manager=THREE.DefaultLoadingManager;
+      // Between batches, all outstanding image requests can momentarily finish.
+      // Keep this load open until the last geometry batch has queued its maps.
+      const ticket='tofu-world-build';manager.itemStart(ticket);
+      const images=artworkReady(manager);
+      let pass;
+      try{pass=await TougeWorld.create(byId('world'),course,pause);}
+      finally{manager.itemEnd(ticket);}
+      await images;
+      if(preparation!==job){pass.renderer.dispose();checkJob(job);}
+      world=pass;
+    }
+    const pass=world;
+    for(;;){
+      await pause();
+      const stage=course;
+      pass.setCourse(stage);
+      if(!pass.preparedCourses.has(stage)){
+        await pass.warmGraphics(pause);
+        await pause();
+        if(stage!==course)continue;
+        // Upload the grid's geometry and render targets behind the cover. Its
+        // first visible frame and the three-second countdown start together.
+        pass.render(0,drive,false);
+        pass.reset();pass.preparedCourses.add(stage);
+      }
+      if(loading?.inspect && !stage.night && !pass.inspectionReady)await pass.warmInspection(pause);
+      if(stage===course)return pass;
+    }
+  }
+  function loadPass(){
+    if(contextLost)return Promise.reject(new Error('WebGL context lost'));
+    if(preparation)return preparation.ready;
+    if(world?.course===course && world.preparedCourses.has(course) &&
+      (!loading?.inspect || course.night || world.inspectionReady))return Promise.resolve(world);
+    const job={};preparation=job;
+    job.ready=preparePass(job).finally(()=>{if(preparation===job)preparation=null;});
+    return job.ready;
+  }
+  function schedulePass(){
+    if(warmScheduled || preparation || contextLost || state!=='menu' || dialog || document.hidden ||
+      (world?.course===course && world.preparedCourses.has(course)))return;
+    warmScheduled=true;
+    const warm=()=>{
+      warmScheduled=false;
+      if(state==='menu' && !dialog && !document.hidden && !contextLost)loadPass().catch(()=>{});
+    };
+    if(window.requestIdleCallback)requestIdleCallback(warm,{timeout:600});else setTimeout(warm,100);
   }
   function leaveCar(){menu();byId('view-car').focus({preventScroll:true});}
   bind('view-car',()=>enterPass(true));bind('car-back',leaveCar);
   bind('orbit-left',()=>walkaround.move(-Math.PI/6,0));bind('orbit-right',()=>walkaround.move(Math.PI/6,0));
   function begin(){return enterPass(false);}
   async function enterPass(inspect){
-    if(loading)return;loading=true;clearInput();if(!inspect)unlockAudio();
-    closeDialog(false);byId('start-btn').disabled=true;byId('view-car').disabled=true;
-    for(const button of stageButtons)button.disabled=true;
-    const label=byId('start-btn').children[1];label.textContent=inspect?'Loading car':'Loading pass';
+    if(loading?.inspect===inspect)return;
+    closeDialog(false);
+    const request={inspect};loading=request;clearInput();if(!inspect)unlockAudio();
+    showEntry();
+    resumePreparation?.();
     try{
-      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-      if(!world)world=await loadPass();else world.setCourse(course);
+      await loadPass();
+      if(loading!==request)return;
       world.reset();drive.reset();accumulator=0;prevTime=0;
       if(inspect){
         // Park by the shrine in daylight and by the shop on the night grid.
         drive.place(course.night?course.start:course.splits[0]-19);
         const p=drive.contact;p.offset=.55;drive.x=p.x+p.rx*p.offset;drive.z=p.z+p.rz*p.offset;
-        drive.steerAngle=.048;walkaround.reset();stateTo('viewcar');
-        walkaround.render(world,drive,1/60);byId('car-back').focus({preventScroll:true});return;
+        drive.steerAngle=.048;walkaround.reset();walkaround.render(world,drive,1/60);
+        stateTo('viewcar');byId('car-back').focus({preventScroll:true});return;
       }
       renderPose.capture(drive);count=3.1;lastHud=0;toastTime=0;
       byId('toast').hidden=true;byId('chain').hidden=true;byId('countdown').hidden=false;setText('count-number','3');setText('count-label','START GRID');
-      stateTo('countdown');audio.update(driveTelemetry());audio.setActive(true);hud();world.render(1/60,drive,false);
-    }catch(error){console.error('Unable to start Tofu Touge',error);showError();}
-    finally{
-      loading=false;byId('start-btn').disabled=false;byId('view-car').disabled=false;label.textContent=startLabel();
-      for(const button of stageButtons)button.disabled=false;
-    }
+      world.render(1/60,drive,false);stateTo('countdown');audio.update(driveTelemetry());audio.setActive(true);hud();
+    }catch(error){if(loading===request){console.error('Unable to start Tofu Touge',error);showError();}}
+    finally{if(loading===request)clearEntry();}
   }
   function resume(){
     if(state!=='paused')return;closeDialog(false);clearInput();unlockAudio();stateTo(resumeTo);audio.setActive(true);prevTime=0;
@@ -282,7 +391,6 @@
     setText('radio-power',!audio.context||!sound||audioNeedsGesture()?'Enable sound':music?'Mute music':'Enable music');
   }
   function openRadio(){
-    if(loading)return;
     const driving=state==='racing'||state==='countdown';
     radioParent=driving?'drive':dialog==='pause'?'pause':state;
     unlockAudio();audio.setMusicPreview(true);
@@ -439,6 +547,7 @@
       return;
     }
     if(state==='menu'){
+      if(code==='Escape' && loading){event.preventDefault();clearEntry();return;}
       if(event.target.closest?.('.course-picker')&&(code==='ArrowLeft'||code==='ArrowRight')){
         event.preventDefault();const index=code==='ArrowLeft'?0:1;
         selectStage(stageButtons[index].dataset.stage);stageButtons[index].focus();return;
@@ -478,14 +587,23 @@
   window.addEventListener('blur',()=>{clearInput();pause();});
   document.addEventListener('visibilitychange',()=>{
     if(document.hidden){clearInput();pause();}
+    else {resumePreparation?.();schedulePass();}
     if(dialog==='radio')audio.setMusicPreview(!document.hidden);
   });
   window.addEventListener('resize',()=>{
+    hudMapBounds=null;
     world?.resize();
     if(state==='menu')paintMap(byId('menu-map'));else if(state==='viewcar')walkaround.pending=2;else hud();
   });
-  byId('world').addEventListener('webglcontextlost',event=>{event.preventDefault();clearInput();showError();});
-  byId('world').addEventListener('webglcontextrestored',()=>{world=null;menu();});
+  byId('world').addEventListener('webglcontextlost',event=>{
+    const inPass=loading || state!=='menu';
+    event.preventDefault();contextLost=true;preparation=null;resumePreparation?.();
+    world?.renderer.dispose();world=null;clearInput();clearEntry();
+    if(inPass)showError();
+  });
+  byId('world').addEventListener('webglcontextrestored',()=>{
+    contextLost=false;if(dialog==='error')menu();else schedulePass();
+  });
   function driveTelemetry() {
     return {
       rpm: drive.rpm,
@@ -573,4 +691,8 @@
     if(now-lastHud>48){hud();lastHud=now;}
   }
   requestAnimationFrame(frame);
+  requestAnimationFrame(()=>{
+    requestAnimationFrame(schedulePass);
+    audio.prepareOutput();
+  });
 })();
