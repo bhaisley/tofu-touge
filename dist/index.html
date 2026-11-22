@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#10191d">
+  <meta name="description" content="Drive a panda Toyota GR86 with a NEO86-inspired wide body down Haruna Pass in Tofu Touge.">
+  <title>Tofu Touge — Haruna Downhill</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='9' fill='%23f26743'/%3E%3Cpath d='m8 47 21-32 10 16 5-7 13 23H45L34 31l-4 6-2-4-9 14z' fill='%2310191d'/%3E%3C/svg%3E">
+  <link rel="preload" as="image" href="assets/art/haruna-dawn.webp">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-state="menu">
+  <canvas id="world" aria-label="Haruna Pass driving view"></canvas>
+  <div id="cover" aria-hidden="true"><div class="cover-art"></div><div class="cover-shade"></div></div>
+  <div id="race-vignette" aria-hidden="true"></div>
+  <header class="topbar">
+    <div class="identity">
+      <span class="crest" aria-hidden="true"><i></i><b></b></span>
+      <span class="jp-brand" lang="ja">豆腐峠</span>
+      <span class="header-rule"></span><span id="screen-label" class="mono">MAIN MENU</span>
+    </div>
+    <div class="top-actions">
+      <button id="radio-btn" class="top-button" aria-label="Open pass radio" aria-haspopup="dialog"><span class="icon-radio" aria-hidden="true"><i></i><i></i><i></i></span><span class="radio-label">RADIO</span></button>
+      <button id="sound-btn" class="top-button sound" aria-pressed="true" aria-label="Mute sound"><span class="icon icon-sound" aria-hidden="true"><i></i></span><span id="sound-label">SOUND ON</span></button>
+      <button id="full-btn" class="top-button square" aria-label="Enter fullscreen" title="Fullscreen"><span class="icon icon-full" aria-hidden="true"></span></button>
+      <button id="pause-btn" class="top-button square race-only" aria-label="Pause game" title="Pause game"><span class="icon icon-pause" aria-hidden="true"></span></button>
+    </div>
+  </header>
+
+  <main id="menu">
+    <div class="menu-copy">
+      <div class="kicker"><i></i><span>DOWNHILL TIME ATTACK</span></div>
+      <h1 aria-label="Tofu Touge"><span class="title-line">TOFU<span class="speed-stripes" aria-hidden="true"><i></i><i></i><i></i></span></span><span class="title-line">TOUGE</span></h1>
+      <p class="objective">Drift the hairpins of Haruna Pass.<br>Bring the tofu down intact.</p>
+      <div class="menu-buttons">
+        <button id="start-btn" class="primary"><span class="play-icon" aria-hidden="true"></span><span>Start descent</span><kbd>Enter</kbd></button>
+        <button id="controls-btn" class="secondary"><span class="keyboard-icon" aria-hidden="true"></span>Controls</button>
+      </div>
+      <p id="menu-record" class="menu-record" hidden></p>
+    </div>
+    <section class="course-strip" aria-label="Stage information">
+      <div class="course-cell route-cell"><canvas id="menu-map" width="200" height="96" aria-hidden="true"></canvas><div><span class="meta">COURSE</span><strong>Haruna Pass</strong></div></div>
+      <div class="course-cell"><span class="meta">DISTANCE</span><strong id="menu-distance">—</strong></div>
+      <div class="course-cell elevation-cell"><span class="meta">ELEVATION DROP</span><strong id="menu-drop">—</strong></div>
+      <div class="course-cell weather-cell"><span class="meta">CONDITIONS</span><strong>Damp <em> / </em> Dawn</strong></div>
+      <button id="view-car" class="course-cell vehicle-cell" aria-label="View car, Toyota GR86 NEO86"><span class="meta">VIEW CAR <span aria-hidden="true">↗</span></span><strong>Toyota GR86 <small>NEO86</small></strong></button>
+    </section>
+  </main>
+  <section id="walkaround" aria-label="Vehicle walkaround" hidden>
+    <div class="car-caption"><h2>Toyota GR86 <small>NEO86</small></h2><p>Drag to rotate · Scroll or pinch to zoom</p></div>
+    <div class="car-actions">
+      <button id="orbit-left" class="top-button square" aria-label="Rotate car view left">‹</button>
+      <button id="orbit-right" class="top-button square" aria-label="Rotate car view right">›</button>
+      <button id="car-back" class="secondary">Back</button>
+    </div>
+  </section>
+
+  <section id="hud" aria-label="Driving instruments" hidden>
+    <div class="timing instrument"><span class="meta">RUN TIME</span><strong id="clock">00:00.00</strong><div class="timing-sector"><i></i><span id="sector">S1 / CEDAR RIDGE</span></div></div>
+    <div class="cargo instrument"><span class="meta">TOFU CONDITION</span><strong id="condition">100<small>%</small></strong><span id="cargo-meter"><i></i></span><span id="total-score">0 DRIFT PTS</span></div>
+    <div id="map-unit" class="instrument"><div class="map-heading"><span class="meta">HARUNA PASS</span><span lang="ja">榛名山</span></div><canvas id="hud-map" width="280" height="154" aria-label="Route and car position"></canvas><div class="route-progress"><i id="progress-fill"></i></div><span id="remaining">— KM TO DELIVERY</span></div>
+    <div class="speed-unit instrument"><div class="speed-numbers"><div class="gear-group"><span class="meta">GEAR</span><b id="gear">1</b></div><strong id="speed">0</strong><span class="speed-unit-label">KM/H</span></div><div id="tach" aria-hidden="true"></div><div class="rpm-row"><span id="rpm">1,050 RPM</span><span>8,000</span></div></div>
+    <div id="chain" class="chain" hidden><span class="meta">DRIFT CHAIN <span id="slip-angle"></span></span><strong id="chain-points">0</strong><span id="multiplier">×1.0</span></div>
+    <div id="countdown" hidden><span id="count-label" class="meta">START GRID</span><strong id="count-number">3</strong></div>
+    <div id="toast" role="status" hidden></div>
+    <div id="touch-controls" aria-label="Touch driving controls">
+      <div class="touch-group steering"><button data-drive="left" aria-label="Steer left">◀</button><button data-drive="right" aria-label="Steer right">▶</button></div>
+      <div class="touch-group pedals"><button data-drive="handbrake" class="handbrake">DRIFT</button><button data-drive="brake">BRAKE</button><button data-drive="throttle" class="gas">GAS</button></div>
+    </div>
+  </section>
+
+  <div id="veil" hidden>
+    <section id="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title" tabindex="-1">
+      <button id="dialog-close" class="dialog-close" aria-label="Close dialog">×</button>
+      <div id="dialog-content"></div>
+    </section>
+  </div>
+  <noscript>Enable JavaScript to drive Tofu Touge.</noscript>
+  <script src="vendor/three.min.js"></script>
+  <script src="js/course.js"></script>
+  <script src="js/drive.js"></script>
+  <script src="js/pose.js"></script>
+  <script src="js/car.js"></script>
+  <script src="js/neo-body.js"></script>
+  <script src="js/neo-fascias.js"></script>
+  <script src="js/neo-wheels.js"></script>
+  <script src="js/neo-occlusion.js"></script>
+  <script src="js/neo-view.js"></script>
+  <script src="js/grass.js"></script>
+  <script src="js/forest.js"></script>
+  <script src="js/roadside.js"></script>
+  <script src="js/lighting.js"></script>
+  <script src="js/pass-reflections.js"></script>
+  <script src="js/wet-road.js"></script>
+  <script src="js/spray.js"></script>
+  <script src="js/rock-cuts.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/radio.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>

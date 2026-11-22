@@ -1,0 +1,121 @@
+{
+  "release": "v0.1.0",
+  "game": {
+    "standalone": "https://github.com/bhaisley/tofu-touge/releases/download/v0.1.0/Tofu-Touge.html",
+    "sha256": "b9151d861575470aebf73812fceef12701f20edc668d6c71745f6829cce29d24"
+  },
+  "promotional_art": {
+    "file": "docs/media/tofu-touge-concept.png",
+    "medium": "Original AI-generated illustration created with OpenAI ImageGen for the Haruna Downhill release."
+  },
+  "gameplay": {
+    "capture": "One uninterrupted real-time capture of the released standalone game in Chromium. A scripted controller supplied standard gamepad inputs. All game cameras, HUD, physics, scoring and music transitions ran during capture.",
+    "duration_seconds": 151.93,
+    "course": "Haruna Pass",
+    "finish_time": "02:21.04",
+    "sector_splits": [
+      "00:47.20",
+      "00:48.25",
+      "00:45.58"
+    ],
+    "drift_points": 6732,
+    "tofu_condition_percent": 100,
+    "peak_slip_degrees": 40.1,
+    "max_multiplier": 3,
+    "seconds_above_16_degrees_slip": 26.8,
+    "peak_speed_kmh": 108.2,
+    "sound": "Captured directly from the game’s stereo master mix, including the engine, tires, road, cues and radio.",
+    "radio": [
+      "Daybreak Signal",
+      "Kōri no Hibana"
+    ],
+    "editions": [
+      {
+        "file": "https://github.com/bhaisley/tofu-touge/releases/download/v0.1.0/Haruna-Full-Run.mp4",
+        "pixels": [
+          1920,
+          1080
+        ],
+        "fps": 60,
+        "video": "H.264",
+        "audio": "AAC stereo, 48 kHz",
+        "bytes": 271304723,
+        "sha256": "203949901f48c0e27e3cc71d440bb1d91de39811adaa7af184129a2649c362a4"
+      },
+      {
+        "file": "docs/media/haruna-full-run.mp4",
+        "pixels": [
+          1280,
+          720
+        ],
+        "fps": 60,
+        "video": "H.264",
+        "audio": "AAC stereo, 48 kHz",
+        "bytes": 76197182,
+        "sha256": "7bfa58f79420f1eea38ab8c55e117dd2303afa45ad6faee0b459f1435c3be1d3"
+      }
+    ]
+  },
+  "screenshots": {
+    "origin": "Unretouched captures from the same game session. The title screen and the walkaround preceded the recorded drive.",
+    "files": [
+      {
+        "file": "docs/media/haruna-title.png",
+        "scene": "Title screen",
+        "pixels": [
+          1920,
+          1080
+        ],
+        "sha256": "aa4aff16f7fa375d5de5c7e0dca0571d4c05650b95bf25ea5a0ceabe8ff050ee"
+      },
+      {
+        "file": "docs/media/cedar-ridge-drift.jpg",
+        "scene": "Cedar ridge",
+        "pixels": [
+          1920,
+          1080
+        ],
+        "sha256": "4d711f91bea9ae0d48ba0df6b7e73deab8f3e99f6d247ce1c94a948f36bd3f19",
+        "video_second": 44.127
+      },
+      {
+        "file": "docs/media/five-hairpins.jpg",
+        "scene": "Five hairpins",
+        "pixels": [
+          1920,
+          1080
+        ],
+        "sha256": "018f1340f1e38b8d0b0a2e8ded9f503e641c26365c0d2fe36bab7bbb96d7aace",
+        "video_second": 67.86
+      },
+      {
+        "file": "docs/media/valley-approach.jpg",
+        "scene": "Final approach",
+        "pixels": [
+          1920,
+          1080
+        ],
+        "sha256": "04d74787548d326d34639c0b558b3be29e7c1a702973be57c3b10024ce8cefcc",
+        "video_second": 143.523
+      },
+      {
+        "file": "docs/media/neo86-walkaround.png",
+        "scene": "View Car",
+        "pixels": [
+          1920,
+          1080
+        ],
+        "sha256": "7f3330908041b5910633c0c8586bba63431f9cc3e4a8ef1bf74c8bdf9b2ae617"
+      },
+      {
+        "file": "docs/media/tofu-delivered.png",
+        "scene": "Delivery results",
+        "pixels": [
+          1920,
+          1080
+        ],
+        "sha256": "33782133bb500d333a42033ca0bae8620e4f3c4a9a5283e85e0d79d6bbd978e8"
+      }
+    ]
+  }
+}
