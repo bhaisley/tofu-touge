@@ -14,8 +14,27 @@
   const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
   const mix = (a,b,t) => a+(b-a)*t;
   const wrap = x => Math.atan2(Math.sin(x),Math.cos(x));
+  const oppositeCourses=new WeakMap();
   class Course {
-    constructor() {
+    constructor(downhill=null) {
+      this.night=!!downhill;
+      this.direction=downhill?-1:1;
+      if(downhill){
+        oppositeCourses.set(this,downhill);oppositeCourses.set(downhill,this);
+        const {length,distance,half,segments,step,bounds}=downhill;
+        Object.assign(this,{length,distance,half,segments,step,bounds});
+        this.start=length-downhill.finish;
+        this.finish=length-downhill.start;
+        this.splits=[length-downhill.splits[1],length-downhill.splits[0],this.finish];
+        this.sectors=['Valley climb','Five hairpins','Cedar summit'];
+        // Stations and the right-hand road frame increase in the driver's
+        // direction. The paved surface stays in the same world coordinates.
+        this.points=downhill.points.slice().reverse().map((p,i)=>({
+          x:p.x,y:p.y,z:p.z,s:i*step,fx:-p.fx,fz:-p.fz,rx:-p.rx,rz:-p.rz,
+          heading:wrap(p.heading+Math.PI),grade:-p.grade,bank:-p.bank,curvature:-p.curvature
+        }));
+        return;
+      }
       const spline = new T.CatmullRomCurve3(route.map(([x,north]) => new T.Vector3(x,0,-north)),false,'centripetal');
       spline.arcLengthDivisions = 6000;
       this.length = spline.getLength();
@@ -54,6 +73,12 @@
         this.bounds.minZ=Math.min(this.bounds.minZ,p.z); this.bounds.maxZ=Math.max(this.bounds.maxZ,p.z);
       }
     }
+    get physicalCourse() {return this.night?oppositeCourses.get(this):this;}
+    reversed() {
+      return oppositeCourses.get(this)||new Course(this);
+    }
+    physicalStation(s) {return this.night?this.length-s:s;}
+    physicalIndex(i) {return this.night && i!==undefined?this.segments-1-i:i;}
     sample(distance) {
       const s=clamp(distance,0,this.length), i=Math.min(this.segments-1,Math.floor(s/this.step));
       const a=this.points[i], b=this.points[i+1], t=(s-a.s)/this.step;

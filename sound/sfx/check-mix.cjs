@@ -94,5 +94,76 @@ assert(mixer.wallPan.pan.value > 0.5 && mixer.wallDelay.delayTime.value > nearDe
   mixer.wallGain.gain.value < nearGain, 'a farther wall should return later and quieter');
 drive({ rpm: 4700 });
 assert.equal(mixer.wallGain.gain.value, 0, 'open roadside clears the stone reflection');
+drive({frontSlipAngle:.33,rearSlipAngle:.012,slip:0,tireScrub:.71});
+assert(gain('tire-front')>.36 && gain('tire-squeal')===0 && gain('tire-lock')===0,
+  'a pushing front axle has its own voice without rear howl');
+drive({frontSlipAngle:.014,rearSlipAngle:.33,slip:.53,tireScrub:.72});
+assert(gain('tire-squeal')>.6 && gain('tire-front')===0 && gain('tire-lock')===0);
+drive({frontSlipAngle:.013,rearSlipAngle:.29,rearLock:1,slip:.64,tireScrub:.83,handbrake:true});
+assert(gain('tire-lock')>.45 && gain('tire-front')===0, 'a locked rear contact patch adds dragged rubber');
+drive({rpm:6400,boost:0,throttle:1,engineLoad:1});
+assert.equal(gain('turbo-spool'),0,'RPM alone cannot make the compressor whistle');
+drive({rpm:6400,boost:.94,throttle:1,engineLoad:1});
+const chargedPitch=mixer.loops.get('turbo-spool').source.playbackRate.value;
+assert(gain('turbo-spool')>.40 && chargedPitch>1.45);
+drive({rpm:5600,boost:0,throttle:0,engineLoad:0});
+assert(gain('turbo-spool')<.01 && mixer.loops.get('turbo-spool').source.playbackRate.value<chargedPitch*.65);
+
+const prefs=new TougeAudio();
+prefs.setSoundVolume(.29);prefs.setMusicVolume(.73);prefs.setEnabled(false);
+assert.equal(prefs.soundVolume,.29);assert.equal(prefs.musicVolume,.73);assert.equal(prefs.enabled,false);
+prefs.context={currentTime:1};prefs.soundBus={gain:parameter()};prefs.musicBus={gain:parameter()};
+prefs.setSoundVolume(1.2);prefs.setMusicVolume(-.4);
+assert.equal(prefs.soundBus.gain.value,1);assert.equal(prefs.musicBus.gain.value,0);
+
+// Run the real transmission and charge model. A vent must follow the driver's
+// cut, and a later tailpipe ignition comes from the same tick as its game event.
+require(path.join(dist,'js/drive.js'));
+const flat={
+  start:1,finish:10000,half:100,distance:9999,splits:[10000],
+  sample(s){return {x:0,y:0,z:-s,s,i:0,fx:0,fz:-1,rx:1,rz:0,heading:0,curvature:0,grade:0,bank:0,offset:0};},
+  nearest(x,z){return {...this.sample(-z),offset:x};}
+};
+const car=new TougeDrive(flat),dt=1/120;
+function runFor(person,seconds,throttle) {
+  const events=[];
+  for(let i=0;i<Math.round(seconds/dt);i++){
+    person.step(dt,{throttle});
+    assert(person.boost>=0 && person.boost<=1);
+    events.push(...person.events.splice(0).map(e=>({...e,at:i*dt})));
+  }
+  return events;
+}
+runFor(car,.24,.42);
+assert(!runFor(car,.5,0).some(e=>e.type==='blowoff'||e.type==='afterfire'));
+const shifts=runFor(car,7.1,1);
+assert(shifts.filter(e=>e.type==='shift').length>=2);
+assert(shifts.filter(e=>e.type==='blowoff').length>=2 && shifts.filter(e=>e.type==='afterfire').length>=2);
+assert(car.boost>.8,'a sustained forward pull builds pressure');
+const lifted=runFor(car,1.5,0),vents=lifted.filter(e=>e.type==='blowoff'),pops=lifted.filter(e=>e.type==='afterfire');
+assert.equal(vents.length,1);assert.equal(pops.length,1);
+assert(vents[0].strength>.6 && pops[0].strength>.5 && pops[0].at>vents[0].at && pops[0].at-vents[0].at<.15);
+assert(car.boost<.01,'the bypass must empty the inlet after a lift');
+car.recover();assert.equal(car.boost,0);assert.equal(car.afterfireTime,-1);
+
+const flutter=new TougeDrive(flat);
+runFor(flutter,7.1,1);
+const releases=[];
+for(let tick=0;tick<170;tick++){
+  flutter.step(dt,{throttle:tick%15<3 ? 0 : 1});
+  for(const e of flutter.events.splice(0))if(e.type==='blowoff')releases.push(tick*dt);
+}
+assert(releases.length>1 && releases.slice(1).every((t,i)=>t-releases[i]>=.22),
+  'rapid pedal feathering must let the valve close and rebuild pressure before another vent');
+const starts=[],audio=new TougeAudio();
+audio.active=true;
+audio.context={
+  currentTime:2,createBufferSource(){return {playbackRate:{},connect(n){return n;},start(){starts.push(this.buffer);}};},
+  createGain(){return {gain:{},connect(n){return n;}};}
+};
+for(const cue of ['blowoff','afterfire']){
+  audio.buffers.set(cue,cue);audio.event(cue,.75);audio.event(cue,.66);
+}
+assert.deepEqual(starts,['blowoff','blowoff','afterfire','afterfire'],'the mixer must honor each physics event in a catch-up frame');
 console.log('Tire squeal per-channel RMS targets: turn-in ' + onset.toFixed(1) +
-  ' dBFS, held slide ' + sustained.toFixed(1) + ' dBFS. Engine anchors, load, perspective and wall checks passed.');
+  ' dBFS, held slide ' + sustained.toFixed(1) + ' dBFS. Engine, turbo transients, tire modes and faders passed.');

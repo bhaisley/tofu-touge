@@ -34,7 +34,7 @@ def main():
         },
         "TougeArtURLs": {
             p.name: data_url(p) for p in sorted((DIST / "assets/art").glob("*.webp"))
-            if p.name != "haruna-dawn.webp"
+            if p.name not in {"haruna-dawn.webp", "haruna-night.webp"}
         },
         "TougeEmbeddedAudio": {
             p.name: data_url(p) for p in sorted((DIST / "assets/sfx").glob("*.wav"))

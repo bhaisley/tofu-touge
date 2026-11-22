@@ -26,11 +26,13 @@
 
   // Both the reflection camera and the shadow pass use the driver's eye for LOD.
   // Crown relief, bark and branchlets converge into the distant photograph.
-  function forestMaterial(material, mode, eye, range, alternate) {
+  function forestMaterial(material, mode, eye, range, light, alternate) {
     material.customProgramCacheKey = () => 'haruna-forest-' + mode;
     material.onBeforeCompile = shader => {
       shader.uniforms.forestEye = {value: eye};
       shader.uniforms.forestRange = {value: range};
+      shader.uniforms.canopyFill=light.fill;
+      shader.uniforms.canopyKey=light.direction;
       const portrait = mode.startsWith('portrait'), shadowPortrait = mode === 'portrait-depth';
       const grassCard=mode.startsWith('grass'),blade=mode==='blades',movingGrass=grassCard||blade;
       const leaves = mode === 'bough' || mode === 'plant' || mode === 'thicket' || mode==='grass' || blade;
@@ -39,6 +41,7 @@
       shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>
         uniform vec3 forestEye;
         uniform vec2 forestRange;
+        uniform vec2 canopyKey;
         varying float forestDetail;
         ${movingGrass?'uniform float grassWind;':''}
         ${grassCard?'varying float tuftHeight;':''}
@@ -47,7 +50,7 @@
         vec2 root = instanceMatrix[3].xz;
         forestDetail = 1.0 - smoothstep(forestRange.x, forestRange.y, distance(root, forestEye.xz));
         ${portrait ? `
-          vec2 eyeDirection = ${shadowPortrait ? 'vec2(.76,-.59)' : 'forestEye.xz - root'};
+          vec2 eyeDirection = ${shadowPortrait ? 'canopyKey' : 'forestEye.xz - root'};
           vec2 right = vec2(eyeDirection.y, -eyeDirection.x) / max(.01, length(eyeDirection));
           vec2 front = vec2(-right.y, right.x);
           vec4 cells = 1. - step(vec4(.5), abs(vec4(0., 1., 2., 3.) - treeCell.x));
@@ -62,7 +65,7 @@
             front * (shape*.19 + .026*(1.-crown)) * forestDetail;
           transformed.y = uv.y - baseline;
           treeUv = uv;
-          sunInCrown = vec2(dot(right*treeCell.y, vec2(.79,-.61)),dot(front,vec2(.79,-.61)));
+          sunInCrown = vec2(dot(right*treeCell.y,canopyKey),dot(front,canopyKey));
         ` : 'transformed.xz *= mix(.62, 1., forestDetail);'}
         ${grassCard?'tuftHeight=position.y;':''}
         ${blade?'transformed.y*=smoothstep(0.,.72,forestDetail);':''}
@@ -79,6 +82,7 @@
       if (!portrait) shader.vertexShader = shader.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
         if (forestDetail <= 0.) gl_Position = vec4(2., 2., 2., 1.);`);
       shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
+        uniform float canopyFill;
         varying float forestDetail;
         ${grassCard?'varying float tuftHeight;':''}
         ${portrait ? 'varying vec2 treeUv; varying vec2 sunInCrown; varying vec2 atlasChoice; uniform sampler2D forestAlternate;' : ''}`);
@@ -112,7 +116,7 @@
       }
       if (leaves) shader.fragmentShader = shader.fragmentShader.replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
         // Thin leaves transmit skylight even when the lower face points towards the road.
-        reflectedLight.indirectDiffuse += diffuseColor.rgb * ${blade?'vec3(.63,.71,.55)':mode==='thicket' ? 'vec3(.46,.50,.47)' : 'vec3(.32,.35,.34)'};`);
+        reflectedLight.indirectDiffuse += diffuseColor.rgb * canopyFill * ${blade?'vec3(.63,.71,.55)':mode==='thicket' ? 'vec3(.46,.50,.47)' : 'vec3(.32,.35,.34)'};`);
     };
     return material;
   }
@@ -381,6 +385,7 @@
 
   function forestMeshes(group, trees, small, grasses, startEye) {
     const eye = startEye.clone();
+    const light={fill:{value:1},direction:{value:new T.Vector2(.79,-.61)}};
     const mobile = window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 760;
     const lod = new T.Vector2(mobile ? 31 : 43, mobile ? 51 : 68);
     const vergeLod = new T.Vector2(mobile ? 43 : 58, mobile ? 62 : 83);
@@ -390,16 +395,16 @@
     const branches = artTexture('haruna-boughs.webp'), understory = artTexture('haruna-understory.webp');
     const shrubs = artTexture('haruna-thickets.webp');
     const wood = forestMaterial(new T.MeshStandardMaterial({map: bark, vertexColors: true,
-      color: 0xe2dfce, roughness: .91, metalness: 0, envMapIntensity: .35}), 'wood', eye, lod);
+      color: 0xe2dfce, roughness: .91, metalness: 0, envMapIntensity: .35}), 'wood', eye, lod, light);
     const cutout = (map, name, range) => forestMaterial(new T.MeshLambertMaterial({
       map, vertexColors: true, side: T.DoubleSide, shadowSide: T.DoubleSide,
       alphaTest: .35, alphaToCoverage: true
-    }), name, eye, range);
+    }), name, eye, range, light);
     const crowns = cutout(branches, 'bough', lod), plants = cutout(understory, 'plant', vergeLod);
     const thickets = cutout(shrubs, 'thicket', thicketLod);
     const depth = (map, name, range) => forestMaterial(new T.MeshDepthMaterial({
       depthPacking: T.RGBADepthPacking, map, alphaTest: map ? .43 : 0, side: T.DoubleSide
-    }), name + '-depth', eye, range);
+    }), name + '-depth', eye, range, light);
     const trunkDepth = depth(null, 'wood', lod), crownDepth = depth(branches, 'bough', lod);
     const lowDepth = depth(understory, 'plant', vergeLod);
     const shrubDepth = depth(shrubs, 'thicket', thicketLod);
@@ -411,9 +416,9 @@
     sheet.translate(0, .5, 0);
     flat.translate(0,.5,0);
     const farMat = forestMaterial(new T.MeshBasicMaterial({map: treesMap,
-      alphaTest: .31, side: T.DoubleSide, alphaToCoverage: true}), 'portrait', eye, lod, alternate);
+      alphaTest: .31, side: T.DoubleSide, alphaToCoverage: true}), 'portrait', eye, lod, light, alternate);
     const farDepth = forestMaterial(new T.MeshDepthMaterial({depthPacking: T.RGBADepthPacking,
-      map: treesMap, alphaTest: .52, side: T.DoubleSide}), 'portrait-depth', eye, lod, alternate);
+      map: treesMap, alphaTest: .52, side: T.DoubleSide}), 'portrait-depth', eye, lod, light, alternate);
     const matrix = new T.Matrix4(), tint = new T.Color();
     const cellSize = 57, bins = new Map(), pockets = [];
     const farCell = 112, stands = new Map();
@@ -510,7 +515,7 @@
       }
       return max;
     }
-    const blades=forestMaterial(new T.MeshLambertMaterial({vertexColors:true,side:T.DoubleSide}),'blades',eye,bladeRange);
+    const blades=forestMaterial(new T.MeshLambertMaterial({vertexColors:true,side:T.DoubleSide}),'blades',eye,bladeRange,light);
     blades.userData.wind=wind;
     const base=cutout(grassAtlas,'grass',bladeRange);base.alphaTest=.22;base.userData.wind=wind;
     const closeBlades=pocket(bladeTuft(),blades,null,'Folded verge grass blades',visibleCapacity(grasses.slice(0,2),bladeRange.y));
@@ -569,6 +574,11 @@
       }
     }
     group.userData.update = update;
+    group.userData.setNight=night=>{
+      light.fill.value=night?.07:1;
+      if(night){light.direction.value.set(-.55,.76).normalize();farMat.color.setRGB(.064,.085,.125);}
+      else{light.direction.value.set(.79,-.61);farMat.color.setHex(0xffffff);}
+    };
     update(startEye);
   }
 

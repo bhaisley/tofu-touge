@@ -864,6 +864,7 @@
         const a=u*2*Math.PI;
         return [cx+side*z*.055+r*Math.cos(a),exhaustY+r*Math.sin(a),base+z+.010*Math.sin(a)];
       };
+      api.exhaustOutlets.push({position:tip(0,0,.050),direction:[side*.055,0,1]});
       // Rolled stainless rim, dark inner wall and soot at the back of the bore.
       const rings=[[.058,-.145],[.064,-.022],[.067,.039],[.0658,.049],
         [.063,.051],[.0588,.050],[.0567,.044],[.053,-.028],[.049,-.111]];

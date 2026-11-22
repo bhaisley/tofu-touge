@@ -2,6 +2,7 @@
 
     python3 sound/sfx/render.py
     python3 sound/sfx/render.py --engine-only
+    python3 sound/sfx/render.py --turbo-tires
 
 Requires Python 3 and SuperCollider. Set SCLANG to a custom sclang executable
 if it is outside PATH and the standard macOS application directory.
@@ -36,9 +37,10 @@ ACOUSTIC_PHASE = {
 LOOPS = {
     "engine-idle": 3.75, "engine-low": 3.0, "engine-drive": 3.0,
     "engine-high": 4.0, "engine-coast": 3.0, "engine-intake": 4.0,
-    "tire-scrub": 3.0, "tire-squeal": 3.0, "road-air": 2.5,
+    "tire-scrub": 3.0, "tire-squeal": 3.0, "tire-front": 3.0, "tire-lock": 3.0,
+    "turbo-spool": 3.0, "road-air": 2.5,
 }
-CUES = ["shift", "overrun", "impact", "checkpoint", "go", "finish"]
+CUES = ["shift", "overrun", "blowoff", "afterfire", "impact", "checkpoint", "go", "finish"]
 
 
 def read_wav(path):
@@ -137,16 +139,22 @@ def master(raw_path, dest, name):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--engine-only", action="store_true",
-                        help="Render the engine, lift and shifter without touching other effects")
+    bank = parser.add_mutually_exclusive_group()
+    bank.add_argument("--engine-only", action="store_true", help="Render the engine, lift and shifter")
+    bank.add_argument("--turbo-tires", action="store_true", help="Render the turbo, tailpipe pops and tire voices")
     args = parser.parse_args()
     sclang = os.environ.get("SCLANG") or shutil.which("sclang") or "/Applications/SuperCollider.app/Contents/MacOS/sclang"
     with tempfile.TemporaryDirectory(prefix="tofu-touge-sfx-") as temp:
-        env = dict(os.environ, TOFU_SFX_RAW=temp, TOFU_SFX_ENGINE_ONLY="1" if args.engine_only else "0")
+        env = dict(os.environ, TOFU_SFX_RAW=temp, TOFU_SFX_ENGINE_ONLY="1" if args.engine_only else "0",
+                   TOFU_SFX_TURBO_TIRES="1" if args.turbo_tires else "0")
         if sys.platform.startswith("linux"):
             env.setdefault("QT_QPA_PLATFORM", "offscreen")
         subprocess.run([sclang, "-D", str(HERE / "render.scd")], env=env, check=True, timeout=75)
-        names = [*FIRING, "overrun", "shift"] if args.engine_only else [*LOOPS, *CUES]
+        names = [*LOOPS, *CUES]
+        if args.engine_only:
+            names = [*FIRING, "overrun", "shift"]
+        elif args.turbo_tires:
+            names = [name for name in names if name.startswith("tire-") or name in ("turbo-spool", "blowoff", "afterfire")]
         DEST.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix=".master-", dir=DEST) as staged:
             for name in names:

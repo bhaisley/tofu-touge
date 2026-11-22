@@ -311,7 +311,13 @@
       this.excluded.push(mesh);
     }
 
+    setCourse(course) {
+      this.course=course;
+      this.gravelStation=-Infinity;this.uniforms.wetReady.value=0;this.elapsed=1;
+    }
+
     waterAt(station, offset, x, z) {
+      if(this.course?.night){station=this.course.physicalStation(station);offset=-offset;}
       const across = Math.abs(offset);
       if (across>this.pavedHalfWidth || !Number.isFinite(station+offset+x+z)) return 0;
       const p = waterPattern, d = p.depression, r = p.runoff, e = p.erosion;
@@ -408,8 +414,9 @@
       if (camera.userData.tougeReflectionPass) return;
       if (this.shoulderGeometry && this.forestGround?.colors?.version !== this.forestColorVersion)
         this.matchForestFloor(this.shoulderGeometry);
-      if (Math.abs(car.contact.s-this.gravelStation)>12) {
-        this.gravelStation = car.contact.s;
+      const station=this.course?this.course.physicalStation(car.contact.s):car.contact.s;
+      if (Math.abs(station-this.gravelStation)>12) {
+        this.gravelStation = station;
         for (const {stones,from,to} of this.gravelSections)
           stones.visible = from < this.gravelStation+93 && to > this.gravelStation-93;
       }
@@ -453,7 +460,7 @@
       mirror.projectionMatrix.copy(camera.projectionMatrix);
       this.uniforms.wetProjection.value.multiplyMatrices(mirror.projectionMatrix,mirror.matrixWorldInverse);
       this.uniforms.wetPlane.value.set(normal.x,normal.y,normal.z,this.plane.constant);
-      this.uniforms.wetStation.value = contact.s;
+      this.uniforms.wetStation.value = station;
 
       // Oblique near-plane clipping keeps terrain from leaking in below the
       // reflection. Only rows controlling depth change; projected UVs do not.

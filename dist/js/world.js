@@ -164,34 +164,39 @@
       c.fillStyle='rgba(0,0,0,.72)';
       for(let chip=0;chip<7800;chip++)c.fillRect(r()*w,r()*h,.45+r()*1.55,.55+r()*2.1);
     });
-    const marks=[],markUV=[],markIdx=[];
-    function decal(s,o,w,len,v0,v1,u0=0,u1=1) {
-      const n=Math.max(1,Math.ceil(len/1.5)),k=marks.length/3;
-      for(let j=0;j<=n;j++){
-        const at=s+len*(j/n-.5);
-        for(const side of [-1,1]) {
-          const v=course.at(at,o+side*w/2,.028);
-          marks.push(v.x,v.y,v.z);markUV.push(side<0?u0:u1,mix(v0,v1,j/n));
-        }
-        if(j<n){const a=k+j*2;markIdx.push(a,a+1,a+2,a+1,a+3,a+2);}
-      }
-    }
-    for(const s of [course.start,course.finish])decal(s,0,course.half*2-.84,.9,.7501,.999);
-    for(const s of course.splits.slice(0,2))decal(s,0,course.half*2-.85,.53,.7501,.999);
-    let previous=-100;
-    for(const p of course.points)if(Math.abs(p.curvature)>.022 && p.s-previous>95){
-      decal(Math.max(12,p.s-26),-2.3,2.15,3.7,0,.7,0,.5);
-      for(let i=0;i<3;i++)decal(p.s-14+i*5,-2.3,1.7,1.8,0,.7,.5,1);
-      previous=p.s;
-    }
-    const markings=new T.Mesh(geometry(marks,markIdx,markUV),new T.MeshStandardMaterial({
+    const markingMaterial=new T.MeshStandardMaterial({
       map:ink,roughness:.62,metalness:0,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2
-    }));
-    markings.name='Weathered route markings';markings.receiveShadow=true;
-    scene.add(markings);wetRoad.exclude(markings);
+    });
+    function stageMarkings(route){
+      const marks=[],markUV=[],markIdx=[];
+      function decal(s,o,w,len,v0,v1,u0=0,u1=1) {
+        const n=Math.max(1,Math.ceil(len/1.5)),k=marks.length/3;
+        for(let j=0;j<=n;j++){
+          const at=s+len*(j/n-.5);
+          for(const side of [-1,1]) {
+            const v=route.at(at,o+side*w/2,.028);
+            marks.push(v.x,v.y,v.z);markUV.push(side<0?u0:u1,mix(v0,v1,j/n));
+          }
+          if(j<n){const a=k+j*2;markIdx.push(a,a+1,a+2,a+1,a+3,a+2);}
+        }
+      }
+      for(const s of [route.start,route.finish])decal(s,0,route.half*2-.84,.9,.7501,.999);
+      for(const s of route.splits.slice(0,2))decal(s,0,route.half*2-.85,.53,.7501,.999);
+      let previous=-100;
+      for(const p of route.points)if(Math.abs(p.curvature)>.022 && p.s-previous>95){
+        decal(Math.max(12,p.s-26),-2.3,2.15,3.7,0,.7,0,.5);
+        for(let i=0;i<3;i++)decal(p.s-14+i*5,-2.3,1.7,1.8,0,.7,.5,1);
+        previous=p.s;
+      }
+      const mesh=new T.Mesh(geometry(marks,markIdx,markUV),markingMaterial);
+      mesh.name=route.night?'Uphill lane markings':'Weathered route markings';
+      mesh.receiveShadow=true;mesh.visible=!route.night;
+      scene.add(mesh);wetRoad.exclude(mesh);return mesh;
+    }
+    const markings=[stageMarkings(course),stageMarkings(course.reversed())];
     const roadHeight=makeRoadHeight(course,pavement.geometry.attributes.position,gravelGeometry.attributes.position,widths,strip);
     wetRoad.dressVerge(scene,course,roadHeight);
-    return roadHeight;
+    return {roadHeight,markings};
   }
   function addRetainingWalls(scene,course,groundAt,forestFloor){
     const stone=TougeLighting.scannedSurface('haruna-masonry',1.0,{side:T.DoubleSide,vertexColors:true});
@@ -340,55 +345,10 @@
       this.position.needsUpdate=true;
     }
   }
-  class TireEffects {
-    constructor(scene){
-      this.lastContacts=[new T.Vector3(),new T.Vector3()];this.connected=false;this.mark=0;
-      this.positions=new Float32Array(720*6*3);
-      const geo=new T.BufferGeometry();this.attribute=new T.BufferAttribute(this.positions,3).setUsage(T.DynamicDrawUsage);
-      geo.setAttribute('position',this.attribute);
-      this.skids=new T.Mesh(geo,new T.MeshBasicMaterial({color:0x141825,transparent:true,opacity:.58,depthWrite:false,side:T.DoubleSide,polygonOffset:true,polygonOffsetFactor:-3}));
-      this.skids.frustumCulled=false;this.skids.renderOrder=-1;scene.add(this.skids);
-      const smokeTex=texture(96,96,(c,w,h)=>{
-        const rand=rng(42);for(let i=0;i<46;i++){const a=rand()*Math.PI*2,rad=rand()*24,x=48+Math.sin(a)*rad,y=48+Math.cos(a)*rad,s=12+rand()*12;
-          const g=c.createRadialGradient(x,y,0,x,y,s);g.addColorStop(0,'rgba(218,224,230,.19)');g.addColorStop(1,'rgba(218,224,230,0)');c.fillStyle=g;c.fillRect(x-s,y-s,s*2,s*2);}
-      });
-      this.pool=Array.from({length:34},()=>{const sprite=new T.Sprite(new T.SpriteMaterial({map:smokeTex,transparent:true,depthWrite:false,opacity:0,rotation:Math.random()*3}));scene.add(sprite);sprite.visible=false;return {sprite,life:2};});
-      this.particle=0;this.timer=0;
-    }
-    cut(){this.connected=false;this.timer=0;for(const p of this.pool)p.sprite.visible=false;}
-    clear(){this.positions.fill(0);this.attribute.needsUpdate=true;this.mark=0;this.cut();}
-    update(dt,car,contacts,eye,water){
-      for(const p of this.pool)if(p.sprite.visible){
-        p.life+=dt;p.sprite.visible=p.life<1.05;
-        p.sprite.position.x+=p.dx*dt;p.sprite.position.z+=p.dz*dt;p.sprite.position.y+=dt*(.7+p.life*.48);
-        const nearCamera=smooth(.5,1.55,p.sprite.position.distanceTo(eye));
-        p.sprite.material.opacity=p.power*nearCamera*smooth(0,.10,p.life)*Math.max(0,1-p.life/1.05)*.40;
-        p.sprite.scale.setScalar(.38+p.life*1.95);
-      }
-      this.timer+=dt;
-      if(car.slip<.21||car.kmh<23){this.connected=false;return;}
-      if(this.timer<.034)return;
-      this.timer%=.034;
-      if(this.connected)for(let i=0;i<2;i++){
-        const old=this.lastContacts[i],v=contacts[i+2],dx=v.x-old.x,dz=v.z-old.z,len=Math.hypot(dx,dz);
-        if(len<.03||len>7)continue;
-        const wx=-dz/len*.075,wz=dx/len*.075;
-        const y0=old.y+.014,y1=v.y+.014;
-        this.positions.set([old.x-wx,y0,old.z-wz,old.x+wx,y0,old.z+wz,v.x-wx,y1,v.z-wz,
-          old.x+wx,y0,old.z+wz,v.x+wx,y1,v.z+wz,v.x-wx,y1,v.z-wz],this.mark*18);
-        this.mark=(this.mark+1)%720;this.attribute.needsUpdate=true;
-      }
-      this.lastContacts[0].copy(contacts[2]);this.lastContacts[1].copy(contacts[3]);this.connected=true;
-      const p=this.pool[this.particle++%this.pool.length],v=contacts[2+this.particle%2];
-      p.sprite.position.copy(v);p.sprite.position.y+=.12;
-      p.dx=Math.sin(car.travel)*car.speed*.12+.16;p.dz=-Math.cos(car.travel)*car.speed*.12;
-      p.life=0;p.power=car.slip*(1-.76*water);p.sprite.scale.setScalar(.38);
-      p.sprite.material.opacity=0;p.sprite.visible=true;
-    }
-  }
   class World {
-    constructor(canvas,course){
-      this.course=course;this.renderer=new T.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance',alpha:false});
+    constructor(canvas,activeCourse){
+      const course=activeCourse.physicalCourse;
+      this.renderer=new T.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance',alpha:false});
       this.renderer.outputColorSpace=T.SRGBColorSpace;this.renderer.toneMapping=T.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.04;
       this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=T.PCFSoftShadowMap;
       this.scene=new T.Scene();this.scene.background=new T.Color(0x899da6);this.scene.fog=new T.FogExp2(0x596d74,.00215);
@@ -399,7 +359,9 @@
       this.sun=TougeLighting.makeSun(this.scene,innerWidth<760?1024:2048);
       const groundAt=landHeight(course),forestFloor=addTerrain(this.scene,course,groundAt,this.sky);
       this.wetRoad=new TougeWetRoad(this.renderer,forestFloor);
-      this.roadHeight=addRoad(this.scene,course,groundAt,this.wetRoad);
+      const road=addRoad(this.scene,course,groundAt,this.wetRoad);
+      this.routeMarkings=road.markings;
+      this.roadHeight=(x,z,hint)=>road.roadHeight(x,z,this.course.physicalIndex(hint));
       this.walls=addRetainingWalls(this.scene,course,groundAt,forestFloor);
       window.addRockCuts(this.scene,course,forestFloor,groundAt);
       this.forest=window.addForest(this.scene,course,groundAt,forestFloor,this.walls);
@@ -421,16 +383,42 @@
       this.groundPatches=[new GroundPatch(this.scene,shade,2.52,4.84,0,-.035,7)];
       this.tailReflection=new T.MeshBasicMaterial({map,color:0xfb4222,transparent:true,opacity:.095,
         depthWrite:false,blending:T.AdditiveBlending,polygonOffset:true,polygonOffsetFactor:-2});
+      this.headlamps=[];
       for(const side of [-1,1]){
         const light=new T.SpotLight(0xffe7be,82,45,.39,.61,1.55);
         light.position.set(side*.595,.639,-2.079);light.target.position.set(side*.81,-.7,-24);
         this.car.body.add(light,light.target);
+        this.headlamps.push(light);
         this.groundPatches.push(new GroundPatch(this.scene,this.tailReflection,.75,1.72,side*.635,2.33,3));
       }
-      this.effects=new TireEffects(this.scene);this.spray=new TougeTireSpray(this.scene,this.wetRoad);
+      this.effects=new TougeDriftEffects(this.scene,this.car,this.roadHeight,course.half);
+      this.spray=new TougeTireSpray(this.scene,this.wetRoad);
+      this.wetRoad.exclude(this.effects.trails.mesh);
       this.shake=0;this.elapsed=0;this.cameraReady=false;
       this.scale=window.devicePixelRatio||1;this.slowTime=0;this.fastTime=0;
       this.resize();
+      this.setCourse(activeCourse);
+    }
+    setCourse(course){
+      if(this.course===course)return;
+      this.course=course;
+      const night=course.night;
+      this.sky.userData.setNight(night);this.sun.userData.setNight(night);
+      this.scene.background.setHex(night?0x152238:0x899da6);
+      this.scene.fog.color.setHex(night?0x192739:0x596d74);this.scene.fog.density=night?.0026:.00215;
+      this.forest.userData.setNight(night);this.roadside.userData.setNight(night);
+      this.routeMarkings[0].visible=!night;this.routeMarkings[1].visible=night;
+      this.wetRoad.setCourse(course);this.carLighting.setNight(night);
+      if(night && !this.dippedBeam)this.dippedBeam=TougeLighting.headlampPattern();
+      for(const light of this.headlamps){
+        const side=Math.sign(light.position.x);
+        light.map=night?this.dippedBeam:null;light.color.setHex(night?0xffecd5:0xffe7be);
+        light.intensity=night?1500:82;light.distance=night?91:45;light.decay=night?1.86:1.55;
+        light.angle=night?.47:.39;light.penumbra=night?.56:.61;
+        light.target.position.set(side*(night?1.34:.81),night?-.05:-.7,night?-34:-24);
+      }
+      this.parkedMap?.dispose();this.parkedMap=null;this.parkedStation=NaN;
+      this.placementId=undefined;this.reset();
     }
     resize(){
       const w=window.innerWidth,h=window.innerHeight;this.camera.aspect=w/h;this.camera.updateProjectionMatrix();
@@ -439,15 +427,17 @@
       this.renderer.setPixelRatio(this.scale);this.renderer.setSize(w,h,false);
     }
     reset(){this.effects.clear();this.spray.clear();this.cameraReady=false;this.shake=0;this.lastX=NaN;}
+    exhaustPop(strength){this.effects.exhaust.pop(strength);}
     cycleCamera(){this.cameraMode=(this.cameraMode+1)%3;this.cameraReady=false;return ['Chase','Low chase','Bonnet'][this.cameraMode];}
     wallReflection(contact,heading){
-      const wall=this.walls.find(w=>contact.s>=w.start && contact.s<=w.end);
+      const station=this.course.physicalStation(contact.s);
+      const wall=this.walls.find(w=>station>=w.start && station<=w.end);
       if(!wall)return null;
-      const facing=this.cameraMode===2?heading:this.viewHeading;
+      const facing=this.cameraMode===2?heading:this.viewHeading,side=wall.side*this.course.direction;
       return {
-        side:wall.side*Math.cos(facing-contact.heading),
-        distance:Math.abs(wall.side*wall.offset-contact.offset),
-        amount:smooth(0,12,Math.min(contact.s-wall.start,wall.end-contact.s))
+        side:side*Math.cos(facing-contact.heading),
+        distance:Math.abs(side*wall.offset-contact.offset),
+        amount:smooth(0,12,Math.min(station-wall.start,wall.end-station))
       };
     }
     plantWheels(c) {
@@ -543,7 +533,7 @@
       this.car.setMotion({wheelAngle:c.wheelAngle*this.rollingScale,rearWheelAngle:c.rearWheelAngle*this.rollingScale,
         steer:-(c.steerAngle??c.wheel*.44),brake,bodyRoll:this.bodyRoll,bodyPitch:this.bodyPitch,
         suspensionOffsets:this.legOffsets});
-      this.tailReflection.opacity=.027+.075*brake;
+      this.tailReflection.opacity=this.course.night?.086+.18*brake:.027+.075*brake;
       const speed=Math.abs(c.speed);
       this.viewSpeed=cut?speed:mix(this.viewSpeed,speed,1-Math.exp(-dt*3.9));
       const bonnet=!walkaround && this.cameraMode===2;
@@ -570,15 +560,15 @@
         this.camera.fov=fov;this.camera.near=near;this.camera.updateProjectionMatrix();
       }
       if(simulate){
-        this.spray.update(dt,c,this.wheelContacts,this.camera.position);
-        this.effects.update(dt,c,this.wheelContacts,this.camera.position,this.spray.wetness);
-      }
+        this.spray.update(dt,c,this.wheelContacts,this.camera.position,this.course.night);
+        this.effects.update(dt,c,this.wheelContacts,this.camera.position,this.spray.contactWater,this.course.night);
+      }else this.effects.exhaust.clear();
       this.sky.position.copy(this.camera.position);
       TougeLighting.trackSun(this.sun,c.x,this.rig.position.y,c.z,c.contact.fx,c.contact.fz);
-      this.carLighting.update(c.contact.s);
+      this.carLighting.update(this.course.physicalStation(c.contact.s));
       this.forest?.userData.update?.(this.camera.position);
-      this.roadside?.userData.updateView?.(this.renderer,this.camera,this.elapsed);
-      if(walkaround && (Number.isNaN(this.parkedStation)||Math.abs(this.parkedStation-c.contact.s)>3)){
+      this.roadside?.userData.updateView?.(this.renderer,this.camera,this.elapsed,this.rig.position);
+      if(walkaround && this.sky.material.uniforms.ready.value && (Number.isNaN(this.parkedStation)||Math.abs(this.parkedStation-c.contact.s)>3)){
         this.parkedMap?.dispose();
         this.rig.localToWorld(this.probeCenter.set(0,.98,.08));
         this.parkedMap=TougePassReflections.captureParked(this,this.probeCenter);

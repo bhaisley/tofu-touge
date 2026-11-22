@@ -42,9 +42,9 @@
   // Capture is done when authoring the pass. Driving only interpolates two neighbours.
   function install(car, course) {
     const grid = layout(course.length);
-    let bounce=null;
+    let bounce=null,night=false;
     const uniforms = {
-      passRadiance: {value: null}, passLoaded: {value: 0}, passBlend: {value: 0},
+      passRadiance: {value: null}, passLoaded: {value: 0}, passBlend: {value: 0},passNightMask:{value:0},
       passCenters: {value: [new T.Vector3(), new T.Vector3()]},
       passTiles: {value: [new T.Vector2(), new T.Vector2()]},
       passDiffuseLight:{value:Array.from({length:6},()=>new T.Vector3())},
@@ -56,11 +56,12 @@
       map.flipY = false; map.colorSpace = T.NoColorSpace;
       map.generateMipmaps = false; map.minFilter = T.LinearFilter;
       bounce=diffuseProbes(map.image,grid);
-      uniforms.passRadiance.value = map; uniforms.passLoaded.value = 1;
+      uniforms.passRadiance.value = map; uniforms.passLoaded.value = night?0:1;
+      uniforms.passNightMask.value=night?1:0;
     });
     const fragment = `
       uniform sampler2D passRadiance;
-      uniform float passLoaded, passBlend, parkedProbe;
+      uniform float passLoaded, passBlend, parkedProbe, passNightMask;
       uniform vec3 parkedCenter, passDiffuseLight[6];
       uniform vec3 passCenters[2];
       uniform vec2 passTiles[2];
@@ -82,13 +83,16 @@
           return rgb;
         #endif
       }
-      vec3 passSample(vec3 ray, vec3 center, vec2 tile, float roughness) {
+      vec2 passCoords(vec3 ray, vec3 center, vec2 tile) {
         vec3 offset = passPosition - center;
         float rd = dot(offset, ray);
         float hit = max(1., -rd + sqrt(max(1., rd * rd + 30. * 30. - dot(offset, offset))));
         vec2 uv = passOct(normalize(offset + ray * hit));
-        uv = (tile + (${grid.border}.5 + uv * ${grid.size - 2 * grid.border - 1}.) / ${grid.size}.) /
+        return (tile + (${grid.border}.5 + uv * ${grid.size - 2 * grid.border - 1}.) / ${grid.size}.) /
              vec2(${grid.columns}., ${2 * grid.rows}.);
+      }
+      vec3 passSample(vec3 ray, vec3 center, vec2 tile, float roughness) {
+        vec2 uv=passCoords(ray,center,tile);
         vec3 sharp = texture2D(passRadiance, uv).rgb;
         vec3 wide = texture2D(passRadiance, uv + vec2(0.,.5)).rgb;
         float blur=smoothstep(.055,.34,roughness);
@@ -104,6 +108,16 @@
         return mix(a,b,passBlend);
       }
       vec3 passReflection(vec3 ray,float roughness,vec3 distant) {
+        if(passNightMask>.5){
+          if(parkedProbe>.5 || roughness>.64)return distant;
+          // The stationary tree line still occludes the night sky. Use only
+          // its angular visibility; all reflected radiance comes from the moonlit environment.
+          vec2 blur=vec2(0.,roughness > .28 ? .5 : 0.);
+          vec3 a=texture2D(passRadiance,passCoords(ray,passCenters[0],passTiles[0])+blur).rgb;
+          vec3 b=texture2D(passRadiance,passCoords(ray,passCenters[1],passTiles[1])+blur).rgb;
+          float sky=smoothstep(.044,.190,dot(mix(a,b,passBlend),vec3(.21,.72,.07)));
+          return distant*mix(.24,1.,mix(sky,1.,smoothstep(.34,.64,roughness)));
+        }
         distant=passSourceLight(distant);
         if(passLoaded < .5 || parkedProbe>.5 || roughness>=.73) return distant;
         return mix(passLocalReflection(ray,roughness),distant,smoothstep(.38,.73,roughness));
@@ -165,7 +179,7 @@
       const f = T.MathUtils.clamp(station / grid.spacing, 0, grid.count - 1);
       const first = Math.min(grid.count - 2, Math.floor(f));
       uniforms.passBlend.value = T.MathUtils.smoothstep(f - first, 0, 1);
-      if(bounce){
+      if(bounce && !night){
         const t=uniforms.passBlend.value;
         uniforms.passDiffuseLight.value.forEach((v,axis)=>{
           const j=first*18+axis*3;
@@ -181,7 +195,13 @@
         uniforms.passCenters.value[i].set(p.x, p.y + 1.3, p.z);
       }
     }
-    return {setParked,update};
+    function setNight(value){
+      night=value;
+      uniforms.passLoaded.value=bounce && !night?1:0;
+      uniforms.passNightMask.value=bounce && night?1:0;
+      setParked(null);
+    }
+    return {setParked,setNight,update};
   }
 
   // A parked car can afford a higher-resolution capture at its actual glass
@@ -198,14 +218,21 @@
     const target=renderer.getRenderTarget(),skyAt=sky.position.clone(),sun=sky.material.uniforms.radiance;
     const oldAuto=shadow.autoUpdate,oldWet=wetRoad.uniforms.wetReady.value,oldSun=sun.value;
     const visible=world.groundPatches.map(p=>p.mesh.visible),rigVisible=rig.visible;
+    const hiddenBody=[];
     try{
-      eye.position.copy(center);sky.position.copy(center);sun.value=1;rig.visible=false;
+      eye.position.copy(center);sky.position.copy(center);sun.value=1;
+      if(world.course.night){
+        // The body must be absent from its own capture, but its headlamps
+        // still illuminate the tarmac and foliage reflected in the glass.
+        rig.traverse(obj=>{if(obj.isMesh && obj.visible){hiddenBody.push(obj);obj.visible=false;}});
+      }else rig.visible=false;
       world.groundPatches.forEach(p=>{p.mesh.visible=false;});wetRoad.uniforms.wetReady.value=0;
       shadow.autoUpdate=false;shadow.needsUpdate=true;
       eye.update(renderer,scene);
       return filter.fromCubemap(cube.texture);
     }finally{
-      rig.visible=rigVisible;world.groundPatches.forEach((p,i)=>{p.mesh.visible=visible[i];});
+      rig.visible=rigVisible;for(const mesh of hiddenBody)mesh.visible=true;
+      world.groundPatches.forEach((p,i)=>{p.mesh.visible=visible[i];});
       sun.value=oldSun;sky.position.copy(skyAt);wetRoad.uniforms.wetReady.value=oldWet;
       renderer.setRenderTarget(target);shadow.autoUpdate=oldAuto;shadow.needsUpdate=true;cube.dispose();filter.dispose();
     }

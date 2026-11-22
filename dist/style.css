@@ -15,6 +15,7 @@ button,kbd{font-synthesis:none}
 #cover{pointer-events:none}
 .cover-art,.cover-shade{position:absolute;inset:0}
 .cover-art{background:#162126 url('assets/art/haruna-dawn.webp') center 57%/cover no-repeat}
+body[data-stage="uphill"] .cover-art{background-image:url('assets/art/haruna-night.webp')}
 .cover-shade{background:linear-gradient(90deg,rgba(6,15,18,.56),rgba(7,15,18,.18) 34%,transparent 57%),linear-gradient(180deg,rgba(9,18,21,.28),transparent 20%,transparent 65%,rgba(8,16,20,.48) 85%,rgba(8,15,18,.96))}
 body:not([data-state="menu"]) #cover{display:none}
 #race-vignette{display:none;background:linear-gradient(180deg,rgba(9,16,23,.37),transparent 17%,transparent 77%,rgba(12,14,20,.22));pointer-events:none}
@@ -50,6 +51,15 @@ body[data-state="racing"] .race-only,body[data-state="countdown"] .race-only{dis
 #menu{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:65px var(--edge) clamp(112px,15vh,160px);pointer-events:none}
 body:not([data-state="menu"]) #menu{display:none}
 .menu-copy{width:max-content;max-width:100%;pointer-events:auto}
+.course-picker{display:inline-flex;gap:2px;padding:3px;border:1px solid #cad4cf65;background:#10191dd9}
+.course-picker button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:34px;padding:0 12px;border:0;border-bottom:2px solid transparent;background:transparent;color:#c6d0cf;font:700 .98rem Cond,Arial,sans-serif;letter-spacing:.035em}
+.course-picker button span{font:600 .76rem Barlow,Arial,sans-serif}
+.course-picker button[aria-pressed="true"]{background:#f1ac781c;border-bottom-color:var(--orange);color:#ffceb3}
+.course-picker button:hover{background:#ffffff16}
+.dawn-icon,.night-icon{position:relative;display:inline-block;width:13px;height:13px;margin-right:2px}
+.dawn-icon{background:linear-gradient(currentColor,currentColor) center 10px/13px 1.6px no-repeat}
+.dawn-icon::before{content:'';position:absolute;left:3px;top:4px;width:7px;height:5px;border-radius:7px 7px 0 0;background:currentColor}
+.night-icon{border-radius:50%;box-shadow:inset -3.5px -2px currentColor;transform:rotate(20deg)}
 .kicker{gap:11px;color:#ffad89;font-size:clamp(.72rem,.92vw,.86rem);letter-spacing:.18em}
 .kicker i{display:block;width:33px;height:3px;background:var(--orange);transform:skewX(-18deg)}
 h1{font:italic 900 clamp(6.35rem,min(11.5vw,17.7vh),12.8rem)/.77 Race,Impact,sans-serif;letter-spacing:-.035em;margin:clamp(20px,3.1vh,40px) 0 clamp(20px,3.6vh,44px) -.045em;text-shadow:0 4px 16px #07141936}
@@ -163,6 +173,12 @@ body[data-state="viewcar"] #world:active{cursor:grabbing}
 .toggle-setting[aria-pressed="true"]{color:#ffad88}
 .radio-setting{display:flex;align-items:baseline;flex-wrap:wrap;gap:5px 12px;padding:3px 0;border:0;background:transparent;text-align:left}
 .radio-setting strong{font:600 .82rem Barlow,Arial,sans-serif;color:#ffba9c}
+.volume-mixer{margin:2px 0 9px}
+.volume-row{display:grid;grid-template-columns:6.4rem minmax(40px,1fr) 3rem;align-items:center;gap:10px;min-height:42px;border-bottom:1px solid #d4dfd622}
+.volume-row input{display:block;min-width:0;width:100%;margin:0;accent-color:var(--orange);cursor:pointer}
+.volume-row input:focus-visible{outline:2px solid #ffcd8d;outline-offset:3px}
+.volume-row output{text-align:right;color:#ffbd99;font:600 .79rem var(--mono);font-variant-numeric:tabular-nums}
+#boost{color:#ffc499;font-variant-numeric:tabular-nums}
 #radio-list{border-top:1px solid var(--line)}
 .radio-track{display:grid;grid-template-columns:17px 1fr auto;align-items:center;gap:10px;width:100%;min-height:54px;padding:9px 10px;text-align:left;background:transparent;border:0;border-bottom:1px solid #d4dfd627}
 .radio-track:hover{background:#ffffff0c}
@@ -192,3 +208,67 @@ noscript{position:fixed;inset:50% 10% auto;background:#121b20;padding:20px;z-ind
 @media(pointer:coarse){body[data-state="racing"] #touch-controls,body[data-state="countdown"] #touch-controls{display:flex}#map-unit,.speed-unit{bottom:max(88px,calc(env(safe-area-inset-bottom) + 80px))}.primary kbd{display:none}}
 @media(max-height:560px) and (min-aspect-ratio:1/1){:root{--edge:4vw}.topbar{top:max(10px,env(safe-area-inset-top))}.top-button{height:32px}.top-button.square{width:32px}.crest{width:31px;height:28px}.jp-brand{font-size:1rem}#menu{padding-top:46px;padding-bottom:70px}.kicker{font-size:.65rem}h1{font-size:clamp(4.2rem,17vh,6rem);margin:12px 0}.objective{font-size:.91rem;line-height:1.26}.menu-buttons{margin-top:12px}.primary,.secondary{min-height:36px;font-size:.97rem}.course-strip{bottom:10px;padding-top:8px}.course-cell strong{font-size:1.06rem}.course-cell .meta{font-size:.57rem}#menu-map{height:34px}.timing,.cargo{top:49px;padding:6px 10px}#clock{font-size:1.6rem}.cargo strong{font-size:1.2rem}#map-unit{width:110px;padding:6px 8px}#hud-map{height:40px}.speed-unit{width:145px;padding:6px 9px}#speed{font-size:2.8rem}#toast{top:66%}#count-number{font-size:4.8rem}#dialog{max-height:calc(100dvh - 20px);padding:20px 25px}#dialog-title{font-size:2.6rem;margin-bottom:12px}.binding-list>div{padding:4px 0}.dialog-tip{margin:10px 0}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:0s!important;animation-duration:0s!important}}
+
+/* Keep braking, steering and the handbrake within a thumb's reach on touch screens. */
+@media (pointer:coarse), (hover:none) and (any-pointer:coarse){
+  :root{--touch-key:clamp(60px,9.2vw,84px);--touch-gap:clamp(7px,1.2vw,13px);--pedal-height:clamp(78px,18dvh,98px)}
+  .course-picker button{min-height:44px;padding-inline:13px}
+  .menu-buttons .primary,.menu-buttons .secondary,.dialog-buttons button,.car-actions .secondary{min-height:48px}
+  .vehicle-cell{min-height:44px;justify-content:center}
+  .topbar{left:max(var(--edge),env(safe-area-inset-left));right:max(var(--edge),env(safe-area-inset-right))}
+  .top-button,.top-button.square,.dialog-close,.car-actions .square{min-width:44px;min-height:44px}
+  .controls-tabs button,.toggle-setting,.radio-setting,.pause-links button,#radio-power{min-height:44px}
+  .volume-row{min-height:46px}.volume-row input{height:44px;touch-action:pan-y}
+  body:is([data-state="racing"],[data-state="countdown"]) #touch-controls{display:flex;align-items:flex-end;gap:8px;left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));bottom:calc(8px + env(safe-area-inset-bottom))}
+  .touch-group{gap:var(--touch-gap)}
+  .touch-group button{width:var(--touch-key);min-width:0;height:clamp(62px,14dvh,79px);padding:0 3px;border-radius:9px;border-color:#d7e3dd94;background:linear-gradient(155deg,#1e303ddc,#101a23d9);box-shadow:0 2px 7px #08121d70,inset 0 1px #ffffff1c;color:#f4f2e8;font:700 clamp(.94rem,1.8vw,1.12rem) Cond,sans-serif;letter-spacing:.05em}
+  .steering button{font:700 clamp(1.5rem,3.5vw,2.05rem) Barlow,sans-serif}
+  .touch-group .gas{width:calc(var(--touch-key) + 7px);height:var(--pedal-height);background:linear-gradient(150deg,#583126e8,#221e20e8);border-color:#ffa277;color:#ffd3aa}
+  .touch-group .handbrake{height:clamp(56px,12dvh,70px);border-style:dashed}
+  .touch-group button.held{background:#ff936c;color:#13202a;box-shadow:inset 0 3px 7px #63280d70}
+  #map-unit,.speed-unit{bottom:calc(var(--pedal-height) + 18px + env(safe-area-inset-bottom))}
+}
+@media (max-width:580px) and (orientation:portrait) and (any-pointer:coarse){
+  .pedals{display:grid;grid-template-columns:var(--touch-key) calc(var(--touch-key) + 7px);grid-template-rows:54px 64px;gap:6px var(--touch-gap)}
+  .touch-group .handbrake{grid-area:1 / 1;height:54px}
+  .pedals [data-drive="brake"]{grid-area:2 / 1;height:64px}
+  .pedals .gas{grid-area:1 / 2 / 3 / 3;align-self:end;height:94px}
+  #map-unit{bottom:calc(clamp(62px,14dvh,79px) + 19px + env(safe-area-inset-bottom))}
+  .speed-unit{bottom:calc(140px + env(safe-area-inset-bottom))}
+  .map-heading .meta{font-size:.55rem;letter-spacing:.035em;white-space:nowrap}
+  .map-heading [lang]{display:none}
+  #remaining{font-size:.56rem;letter-spacing:.03em;white-space:nowrap}
+}
+@media (max-width:420px) and (any-pointer:coarse){
+  .top-actions #sound-label,.top-actions #radio-btn .radio-label{display:none}
+  .top-actions .top-button{justify-content:center}
+  .top-actions .top-button:not(.square){padding-inline:9px}
+}
+@media (max-width:360px) and (any-pointer:coarse){
+  .topbar{left:max(10px,env(safe-area-inset-left));right:max(10px,env(safe-area-inset-right));gap:5px}
+  .identity{gap:6px}.jp-brand{font-size:.94rem}.top-actions{gap:4px}
+  .speed-unit{width:134px}#map-unit{width:108px}
+}
+@media (max-height:560px) and (orientation:landscape) and (any-pointer:coarse){
+  .timing,.cargo{top:max(60px,calc(env(safe-area-inset-top) + 54px))}
+  .course-picker button{min-height:44px}
+  #menu{padding-top:52px;padding-bottom:60px}
+  h1{font-size:clamp(3rem,14dvh,5.5rem);margin:9px 0}
+  .menu-buttons{margin-top:9px}
+}
+@media (max-height:440px) and (orientation:landscape) and (any-pointer:coarse){
+  #map-unit .map-heading{display:none}
+  #map-unit{width:123px;padding:5px 8px}
+  #hud-map{height:32px}
+  #remaining,.rpm-row{font-size:.55rem;letter-spacing:.025em;white-space:nowrap}
+  .speed-unit{width:134px;padding:5px 8px}
+  #speed{font-size:2.4rem}
+  .timing,.cargo{padding:4px 9px;gap:2px}
+}
+@media (max-height:360px) and (orientation:landscape) and (any-pointer:coarse){
+  #menu{padding-top:62px;padding-bottom:73px}
+  h1{margin:5px 0}.objective{line-height:1.19}
+  .title-line{display:inline-block}
+  .title-line+.title-line{margin:0 0 0 .14em}
+  .speed-stripes{display:none}
+}

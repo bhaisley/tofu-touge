@@ -11,21 +11,30 @@
   }
   const byId=id=>document.getElementById(id), setText=(id,text)=>{const el=byId(id);if(el.textContent!==text)el.textContent=text;};
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-  const course=new TougeCourse(), drive=new TougeDrive(course);
-  const renderPose=new TougeRenderPose(drive);
   const radio=new TougeRadio(), audio=new TougeAudio({radio});
   const keys=new Set(), fingers=new Map(), previousButtons=new Map();
   const actions=new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD','Space']);
   let world=null,state='menu',dialog='',resumeTo='racing',controlParent='menu',loading=false;
   const walkaround=new TougeCarWalkaround(byId('world'),()=>state==='viewcar');
   let count=3.1,accumulator=0,prevTime=0,lastHud=0,toastTime=0,controlTab='keyboard',focusReturn=null;
-  const fixed=1/120, settingsKey='tofu-touge-settings-v1',recordsKey='tofu-touge-haruna-v1';
-  function read(key){try{return JSON.parse(localStorage.getItem(key)||'{}')||{};}catch{return {};}}
+  const fixed=1/120, settingsKey='tofu-touge-settings-v1';
+  function read(key){
+    try {const data=JSON.parse(localStorage.getItem(key));return data && typeof data==='object' && !Array.isArray(data)?data:{};}
+    catch {return {};}
+  }
   function write(key,value){try{localStorage.setItem(key,JSON.stringify(value));}catch{/* Private sessions can still play. */}}
-  const settings=read(settingsKey), records=read(recordsKey);
+  const settings=read(settingsKey), downhill=new TougeCourse();
+  let course=settings.stage==='uphill'?downhill.reversed():downhill;
+  const drive=new TougeDrive(course), renderPose=new TougeRenderPose(drive);
+  const recordsKey=()=>course.night?'tofu-touge-haruna-night-v1':'tofu-touge-haruna-v1';
+  let records=read(recordsKey());
   let sound=settings.sound!==false,music=settings.music!==false;
+  const savedVolume=value=>Number.isFinite(value)?clamp(value,0,1):1;
+  settings.soundVolume=savedVolume(settings.soundVolume);
+  settings.musicVolume=savedVolume(settings.musicVolume);
   let observedAudioContext=null, handbrakeTap=false,radioParent='menu';
   radio.select(radio.tracks.findIndex(track=>track.id===settings.track));
+  audio.setSoundVolume(settings.soundVolume);audio.setMusicVolume(settings.musicVolume);
   audio.setEnabled(sound);audio.setMusicEnabled(music);
   function timeStr(sec){
     const n=Math.max(0,Math.floor(sec*100+.00001));
@@ -33,11 +42,34 @@
   }
   const songTime=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
   const fmt=n=>Math.round(n).toLocaleString('en-US');
-  const displayDistance=course.distance/1000;
-  byId('menu-distance').innerHTML=displayDistance.toFixed(2)+' <small>KM</small>';
-  byId('menu-drop').innerHTML=Math.round(course.sample(course.start).y-course.sample(course.finish).y)+' <small>M</small>';
+  const displayDistance=downhill.distance/1000;
+  const stageButtons=document.querySelectorAll('.course-picker button');
+  const startLabel=()=>course.night?'Start ascent':'Start descent';
+  function showCourse(){
+    const night=course.night,stage=night?'uphill':'downhill';
+    document.body.dataset.stage=stage;
+    for(const button of stageButtons)button.setAttribute('aria-pressed',String(button.dataset.stage===stage));
+    byId('start-btn').children[1].textContent=startLabel();
+    setText('stage-objective',night?'Climb the hairpins from the tofu shop.':'Drift the hairpins of Haruna Pass.');
+    setText('stage-destination',night?'Bring the delivery to the summit.':'Bring the tofu down intact.');
+    setText('course-name',night?'Haruna Reverse':'Haruna Pass');
+    setText('course-light',night?'Night':'Dawn');
+    setText('elevation-label',night?'ELEVATION GAIN':'ELEVATION DROP');
+    setText('hud-course',night?'HARUNA REVERSE':'HARUNA PASS');
+    byId('menu-distance').innerHTML=displayDistance.toFixed(2)+' <small>KM</small>';
+    const elevation=Math.abs(course.sample(course.start).y-course.sample(course.finish).y);
+    byId('menu-drop').innerHTML=Math.round(elevation)+' <small>M</small>';
+    showRecord();paintMap(byId('menu-map'));
+  }
+  function selectStage(stage){
+    const next=stage==='uphill'?downhill.reversed():downhill;
+    if(loading || state!=='menu' || dialog || course===next)return;
+    course=next;drive.course=course;drive.reset();renderPose.capture(drive);
+    records=read(recordsKey());settings.stage=stage;write(settingsKey,settings);
+    showCourse();
+  }
+  for(const button of stageButtons)button.addEventListener('click',()=>selectStage(button.dataset.stage));
   function showRecord(){const el=byId('menu-record');el.hidden=!Number.isFinite(records.time);if(!el.hidden)el.textContent='PERSONAL BEST  '+timeStr(records.time);}
-  showRecord();
   function paintMap(canvas,local=false) {
     const bounds=canvas.getBoundingClientRect();if(!bounds.width)return;
     const ratio=Math.min(devicePixelRatio||1,2.25),w=bounds.width,h=bounds.height;
@@ -64,12 +96,12 @@
     c.save();c.translate(baseX,baseY);c.rotate(drive.heading-p.heading);c.fillStyle='#ff6943';c.strokeStyle='#162128';c.lineWidth=2;
     c.beginPath();c.moveTo(0,-6);c.lineTo(4.6,4);c.lineTo(0,2.5);c.lineTo(-4.6,4);c.closePath();c.stroke();c.fill();c.restore();
   }
-  paintMap(byId('menu-map'));
+  showCourse();
   const tacho=byId('tach'),ticks=Array.from({length:26},(_,i)=>{const el=document.createElement('i');if(i>20)el.className='hot';tacho.append(el);return el;});
   function stateTo(next){
     state=next;document.body.dataset.state=next;byId('hud').hidden=next==='menu'||next==='viewcar';
     byId('walkaround').hidden=next!=='viewcar';
-    const labels={menu:'MAIN MENU',viewcar:'WALKAROUND',racing:'DOWNHILL RUN',countdown:'START GRID',paused:'PAUSED',result:'RUN RESULT'};
+    const labels={menu:'MAIN MENU',viewcar:'WALKAROUND',racing:course.night?'UPHILL RUN':'DOWNHILL RUN',countdown:'START GRID',paused:'PAUSED',result:'RUN RESULT'};
     setText('screen-label',labels[next]);
     refreshSound();
   }
@@ -165,14 +197,15 @@
   async function enterPass(inspect){
     if(loading)return;loading=true;clearInput();if(!inspect)unlockAudio();
     closeDialog(false);byId('start-btn').disabled=true;byId('view-car').disabled=true;
+    for(const button of stageButtons)button.disabled=true;
     const label=byId('start-btn').children[1];label.textContent=inspect?'Loading car':'Loading pass';
     try{
       await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-      if(!world)world=await loadPass();
+      if(!world)world=await loadPass();else world.setCourse(course);
       world.reset();drive.reset();accumulator=0;prevTime=0;
       if(inspect){
-        // Park at the shrine approach, with room for a full orbit on the pavement.
-        drive.place(course.splits[0]-19);
+        // Park by the shrine in daylight and by the shop on the night grid.
+        drive.place(course.night?course.start:course.splits[0]-19);
         const p=drive.contact;p.offset=.55;drive.x=p.x+p.rx*p.offset;drive.z=p.z+p.rz*p.offset;
         drive.steerAngle=.048;walkaround.reset();stateTo('viewcar');
         walkaround.render(world,drive,1/60);byId('car-back').focus({preventScroll:true});return;
@@ -181,7 +214,10 @@
       byId('toast').hidden=true;byId('chain').hidden=true;byId('countdown').hidden=false;setText('count-number','3');setText('count-label','START GRID');
       stateTo('countdown');audio.update(driveTelemetry());audio.setActive(true);hud();world.render(1/60,drive,false);
     }catch(error){console.error('Unable to start Tofu Touge',error);showError();}
-    finally{loading=false;byId('start-btn').disabled=false;byId('view-car').disabled=false;label.textContent='Start descent';}
+    finally{
+      loading=false;byId('start-btn').disabled=false;byId('view-car').disabled=false;label.textContent=startLabel();
+      for(const button of stageButtons)button.disabled=false;
+    }
   }
   function resume(){
     if(state!=='paused')return;closeDialog(false);clearInput();unlockAudio();stateTo(resumeTo);audio.setActive(true);prevTime=0;
@@ -200,6 +236,33 @@
       byId('music-setting').setAttribute('aria-pressed',String(on));setText('music-setting',on?'ON':'OFF');
     }
     if(dialog==='radio')refreshRadio();
+  }
+  const volumeFields=[
+    {id:'sound-volume',key:'soundVolume',label:'Sound effects'},
+    {id:'music-volume',key:'musicVolume',label:'Music'}
+  ];
+  function volumeControls(){
+    return '<div class="volume-mixer" role="group" aria-label="Volume">'+volumeFields.map(({id,key,label})=>{
+      const percent=Math.round(settings[key]*100);
+      return '<div class="volume-row"><label for="'+id+'">'+label+'</label>'+
+        '<input id="'+id+'" type="range" min="0" max="100" value="'+percent+'" aria-valuetext="'+percent+' percent">'+
+        '<output for="'+id+'" id="'+id+'-value">'+percent+'%</output></div>';
+    }).join('')+'</div>';
+  }
+  function bindVolumes(){
+    for(const {id,key} of volumeFields){
+      const input=byId(id);
+      input.addEventListener('input',()=>{
+        const percent=input.valueAsNumber;
+        if(!Number.isFinite(percent))return;
+        settings[key]=clamp(percent/100,0,1);
+        if(key==='soundVolume')audio.setSoundVolume(settings[key]);
+        else audio.setMusicVolume(settings[key]);
+        input.setAttribute('aria-valuetext',percent+' percent');
+        byId(id+'-value').value=percent+'%';
+        write(settingsKey,settings);
+      });
+    }
   }
   function refreshRadio(){
     const listening=!!audio.context && sound && music && !audioNeedsGesture();
@@ -226,7 +289,7 @@
       '" aria-pressed="false"><span class="track-indicator" aria-hidden="true"></span><span class="track-title">'+
       track.title+'</span><span class="track-genre">'+track.genre+'</span></button>').join('');
     openDialog('radio','<p class="dialog-kicker">HARUNA PASS</p><h2 id="dialog-title">Pass radio</h2>'+
-      '<div id="radio-list" role="group" aria-label="Soundtrack">'+rows+'</div>'+
+      volumeControls()+'<div id="radio-list" role="group" aria-label="Soundtrack">'+rows+'</div>'+
       '<div class="radio-footer"><span id="radio-status" role="status"></span><span id="radio-time" role="timer" aria-label="Track time"></span><button id="radio-power" class="text-link"></button></div>'+
       '<div class="dialog-buttons"><button id="radio-done" class="primary">'+(driving?'Resume run':'Back')+'</button></div>');
     for(const row of byId('radio-list').children)row.addEventListener('click',()=>{
@@ -237,7 +300,7 @@
       else if(!audio.context||audioNeedsGesture())unlockAudio();
       else {unlockAudio();setMusic(!music);}
     });
-    bind('radio-done',dismiss);refreshRadio();
+    bindVolumes();bind('radio-done',dismiss);refreshRadio();
   }
   radio.onChange=reason=>{
     if(reason==='select'||reason==='advance'){
@@ -251,11 +314,11 @@
     const cam=['Chase','Low chase','Bonnet'][world.cameraMode];
     openDialog('pause','<p class="dialog-kicker">HARUNA PASS</p><h2 id="dialog-title">Run paused</h2>'+
       '<div class="settings-row"><span>Camera</span><button class="toggle-setting" id="camera-setting">'+cam+'</button></div>'+
-      '<div class="settings-row"><button id="radio-setting" class="radio-setting" aria-haspopup="dialog"><span>Pass radio</span><strong>'+radio.track.title+' ›</strong></button><button id="music-setting" class="toggle-setting" aria-label="Music" aria-pressed="'+music+'">'+(music?'ON':'OFF')+'</button></div>'+
+      '<div class="settings-row"><button id="radio-setting" class="radio-setting" aria-haspopup="dialog"><span>Pass radio</span><strong>'+radio.track.title+' ›</strong></button><button id="music-setting" class="toggle-setting" aria-label="Music" aria-pressed="'+music+'">'+(music?'ON':'OFF')+'</button></div>'+volumeControls()+
       '<div class="dialog-buttons"><button id="resume" class="primary">Resume run</button><button id="restart" class="secondary">Restart</button></div>'+
       '<div class="pause-links"><button id="pause-controls" class="text-link">Controls</button><button id="recover" class="text-link">Recover (+3 s)</button><button id="to-menu" class="text-link">Main menu</button></div>');
     bind('resume',resume);bind('restart',begin);bind('pause-controls',()=>controls('pause'));bind('recover',recover);bind('to-menu',menu);bind('camera-setting',camera);
-    bind('radio-setting',openRadio);bind('music-setting',()=>setMusic(!music));
+    bindVolumes();bind('radio-setting',openRadio);bind('music-setting',()=>setMusic(!music));
   }
   function pause(){
     if(state!=='racing' && state!=='countdown')return;
@@ -299,9 +362,11 @@
     audio.setActive(false);if(success)audio.event('finish');
     stateTo('result');clearInput();byId('countdown').hidden=true;byId('chain').hidden=true;byId('toast').hidden=true;
     const pb=success&&(!Number.isFinite(records.time)||drive.time<records.time);
-    if(success){if(pb)records.time=drive.time;records.score=Math.max(Number(records.score)||0,drive.score);write(recordsKey,records);}
+    if(success){if(pb)records.time=drive.time;records.score=Math.max(Number(records.score)||0,drive.score);write(recordsKey(),records);}
     const splits=drive.splitTimes.map((t,i)=>'<span>S'+(i+1)+' '+timeStr(t-(drive.splitTimes[i-1]||0))+'</span>').join('');
-    openDialog('result','<p class="dialog-kicker">'+(success?(pb?'HARUNA PASS / PERSONAL BEST':'HARUNA PASS / FINISH'):'HARUNA PASS / DELIVERY FAILED')+'</p><h2 id="dialog-title">'+(success?'Tofu delivered':'Cargo lost')+'</h2><p class="result-time">'+timeStr(drive.time)+'</p><dl class="result-list"><div><dt>Drift score</dt><dd>'+fmt(drive.score)+' pts</dd></div><div><dt>Tofu condition</dt><dd>'+drive.integrity+'%</dd></div><div><dt>'+(success?'Best time':'Distance covered')+'</dt><dd>'+(success?timeStr(records.time):(drive.progress*displayDistance).toFixed(2)+' km')+'</dd></div></dl><div class="result-sector">'+splits+'</div><div class="dialog-buttons"><button class="primary" id="again">Run again</button><button class="secondary" id="done">Main menu</button></div>',false);
+    const resultCourse=course.night?'HARUNA REVERSE':'HARUNA PASS';
+    const resultTitle=success?(course.night?'Summit delivery complete':'Tofu delivered'):'Cargo lost';
+    openDialog('result','<p class="dialog-kicker">'+resultCourse+' / '+(success?(pb?'PERSONAL BEST':'FINISH'):'DELIVERY FAILED')+'</p><h2 id="dialog-title">'+resultTitle+'</h2><p class="result-time">'+timeStr(drive.time)+'</p><dl class="result-list"><div><dt>Drift score</dt><dd>'+fmt(drive.score)+' pts</dd></div><div><dt>Tofu condition</dt><dd>'+drive.integrity+'%</dd></div><div><dt>'+(success?'Best time':'Distance covered')+'</dt><dd>'+(success?timeStr(records.time):(drive.progress*displayDistance).toFixed(2)+' km')+'</dd></div></dl><div class="result-sector">'+splits+'</div><div class="dialog-buttons"><button class="primary" id="again">Run again</button><button class="secondary" id="done">Main menu</button></div>',false);
     bind('again',begin);bind('done',menu);
   }
   function handleEvents(){
@@ -312,6 +377,8 @@
         case 'recover':toast('Car recovered  +3.00 s');break;
         case 'checkpoint':audio.event('checkpoint');toast('Sector '+event.sector+'  ·  '+timeStr(drive.time),2.2);break;
         case 'shift':audio.event('shift');break;
+        case 'blowoff':audio.event('blowoff',event.strength);break;
+        case 'afterfire':audio.event('afterfire',event.strength);world.exhaustPop(event.strength);break;
         case 'finish':hud();results(true);break;
         case 'failed':hud();results(false);break;
       }
@@ -332,10 +399,11 @@
   function gamepad(){
     let pad;try{pad=Array.from(navigator.getGamepads?.()||[]).find(p=>p?.connected&&p.mapping==='standard');}catch{return;}
     if(!pad){previousButtons.clear();return;}
-    for(const i of [0,1,3,9,15]){
+    for(const i of [0,1,3,9,14,15]){
       const held=!!pad.buttons[i]?.pressed,edge=held&&!previousButtons.get(i);previousButtons.set(i,held);
       if(!edge)continue;
       if(dialog==='radio'){if(i===1||i===9)dismiss();else if(i===15)radio.select(radio.nextIndex);continue;}
+      if(state==='menu'&&!dialog&&(i===14||i===15)){selectStage(i===14?'downhill':'uphill');continue;}
       if(state==='viewcar'){if(i===1 || i===9)leaveCar();continue;}
       if(i===0 && state==='racing' && !dialog) handbrakeTap=true;
       if(dialog==='result'&&i===0){begin();continue;}
@@ -352,7 +420,7 @@
       if(code==='Escape'){event.preventDefault();if(!event.repeat)dismiss();return;}
       if(code==='KeyP' && dialog==='pause'&&!event.repeat){event.preventDefault();resume();return;}
       if(code==='Tab'){
-        const focusable=Array.from(byId('dialog').querySelectorAll('button:not([hidden]):not(:disabled)'));
+        const focusable=Array.from(byId('dialog').querySelectorAll('button:not([hidden]):not(:disabled), input:not(:disabled)'));
         if(!focusable.length)return;const first=focusable[0],last=focusable[focusable.length-1];
         if(event.shiftKey&&(document.activeElement===first||document.activeElement===byId('dialog'))){event.preventDefault();last.focus();}
         else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
@@ -366,6 +434,10 @@
       return;
     }
     if(state==='menu'){
+      if(event.target.closest?.('.course-picker')&&(code==='ArrowLeft'||code==='ArrowRight')){
+        event.preventDefault();const index=code==='ArrowLeft'?0:1;
+        selectStage(stageButtons[index].dataset.stage);stageButtons[index].focus();return;
+      }
       if(code==='Enter'&&!event.repeat&&!loading && !event.target.closest?.('button')){event.preventDefault();begin();}
       return;
     }
@@ -415,6 +487,11 @@
       speed: drive.kmh,
       slip: drive.slip,
       tireScrub: drive.tireScrub,
+      frontSlipAngle: drive.frontSlipAngle,
+      rearSlipAngle: drive.rearSlipAngle,
+      rearLock: drive.rearLock,
+      wheelspin: drive.wheelspin,
+      boost: drive.boost,
       angle: drive.angle,
       handbrake: drive.handbrake,
       throttle: drive.throttle,
@@ -428,9 +505,10 @@
   function hud(){
     setText('clock',timeStr(drive.time));setText('speed',String(Math.round(drive.kmh)));setText('gear',drive.gear<0?'R':String(drive.gear));
     setText('rpm',fmt(Math.round(drive.rpm/50)*50)+' RPM');setText('total-score',fmt(drive.score)+' DRIFT PTS');
+    setText('boost',(drive.boost*.35).toFixed(2)+' BAR');
     const sector=Math.min(2,drive.sector);setText('sector','S'+(sector+1)+' / '+course.sectors[sector].toUpperCase());
     byId('condition').firstChild.nodeValue=String(drive.integrity);byId('cargo-meter').firstElementChild.style.width=drive.integrity+'%';
-    byId('progress-fill').style.width=drive.progress*100+'%';setText('remaining',((1-drive.progress)*displayDistance).toFixed(2)+' KM TO DELIVERY');
+    byId('progress-fill').style.width=drive.progress*100+'%';setText('remaining',((1-drive.progress)*displayDistance).toFixed(2)+(course.night?' KM TO SUMMIT':' KM TO DELIVERY'));
     const threshold=Math.round(drive.rpm/8000*ticks.length);for(let i=0;i<ticks.length;i++)ticks[i].classList.toggle('lit',i<threshold);
     byId('chain').hidden=drive.chain<3||state==='result';
     if(!byId('chain').hidden){
@@ -464,7 +542,7 @@
       drive.engineLoad+=(input.throttle*.49-drive.engineLoad)*(1-Math.exp(-dt*9));
       count-=dt;
       if(count>0){setText('count-number',String(Math.min(3,Math.ceil(count))));}
-      else{renderPose.capture(drive);stateTo('racing');audio.event('go');setText('count-number','GO');setText('count-label','HARUNA DOWNHILL');}
+      else{renderPose.capture(drive);stateTo('racing');audio.event('go');setText('count-number','GO');setText('count-label',course.night?'HARUNA NIGHT ASCENT':'HARUNA DOWNHILL');}
     }else{
       if(raw>dt)drive.time+=raw-dt;
       accumulator+=dt;

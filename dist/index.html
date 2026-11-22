@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#10191d">
-  <meta name="description" content="Drive a panda Toyota GR86 with a NEO86-inspired wide body down Haruna Pass in Tofu Touge.">
-  <title>Tofu Touge — Haruna Downhill</title>
+  <meta name="description" content="Drift a turbo NEO86 down Haruna Pass at dawn or drive the reverse climb under moonlight.">
+  <title>Tofu Touge — Haruna Pass</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='9' fill='%23f26743'/%3E%3Cpath d='m8 47 21-32 10 16 5-7 13 23H45L34 31l-4 6-2-4-9 14z' fill='%2310191d'/%3E%3C/svg%3E">
   <link rel="preload" as="image" href="assets/art/haruna-dawn.webp">
   <link rel="stylesheet" href="style.css">
@@ -21,7 +21,7 @@
       <span class="header-rule"></span><span id="screen-label" class="mono">MAIN MENU</span>
     </div>
     <div class="top-actions">
-      <button id="radio-btn" class="top-button" aria-label="Open pass radio" aria-haspopup="dialog"><span class="icon-radio" aria-hidden="true"><i></i><i></i><i></i></span><span class="radio-label">RADIO</span></button>
+      <button id="radio-btn" class="top-button" aria-label="Open pass radio and volume controls" aria-haspopup="dialog"><span class="icon-radio" aria-hidden="true"><i></i><i></i><i></i></span><span class="radio-label">RADIO</span></button>
       <button id="sound-btn" class="top-button sound" aria-pressed="true" aria-label="Mute sound"><span class="icon icon-sound" aria-hidden="true"><i></i></span><span id="sound-label">SOUND ON</span></button>
       <button id="full-btn" class="top-button square" aria-label="Enter fullscreen" title="Fullscreen"><span class="icon icon-full" aria-hidden="true"></span></button>
       <button id="pause-btn" class="top-button square race-only" aria-label="Pause game" title="Pause game"><span class="icon icon-pause" aria-hidden="true"></span></button>
@@ -30,9 +30,12 @@
 
   <main id="menu">
     <div class="menu-copy">
-      <div class="kicker"><i></i><span>DOWNHILL TIME ATTACK</span></div>
+      <div class="course-picker" role="group" aria-label="Choose a Haruna course">
+        <button type="button" data-stage="downhill" aria-pressed="true"><i class="dawn-icon" aria-hidden="true"></i>Downhill <span>· Dawn</span></button>
+        <button type="button" data-stage="uphill" aria-pressed="false"><i class="night-icon" aria-hidden="true"></i>Uphill <span>· Night</span></button>
+      </div>
       <h1 aria-label="Tofu Touge"><span class="title-line">TOFU<span class="speed-stripes" aria-hidden="true"><i></i><i></i><i></i></span></span><span class="title-line">TOUGE</span></h1>
-      <p class="objective">Drift the hairpins of Haruna Pass.<br>Bring the tofu down intact.</p>
+      <p class="objective"><span id="stage-objective">Drift the hairpins of Haruna Pass.</span><br><span id="stage-destination">Bring the tofu down intact.</span></p>
       <div class="menu-buttons">
         <button id="start-btn" class="primary"><span class="play-icon" aria-hidden="true"></span><span>Start descent</span><kbd>Enter</kbd></button>
         <button id="controls-btn" class="secondary"><span class="keyboard-icon" aria-hidden="true"></span>Controls</button>
@@ -40,10 +43,10 @@
       <p id="menu-record" class="menu-record" hidden></p>
     </div>
     <section class="course-strip" aria-label="Stage information">
-      <div class="course-cell route-cell"><canvas id="menu-map" width="200" height="96" aria-hidden="true"></canvas><div><span class="meta">COURSE</span><strong>Haruna Pass</strong></div></div>
+      <div class="course-cell route-cell"><canvas id="menu-map" width="200" height="96" aria-hidden="true"></canvas><div><span class="meta">COURSE</span><strong id="course-name">Haruna Pass</strong></div></div>
       <div class="course-cell"><span class="meta">DISTANCE</span><strong id="menu-distance">—</strong></div>
-      <div class="course-cell elevation-cell"><span class="meta">ELEVATION DROP</span><strong id="menu-drop">—</strong></div>
-      <div class="course-cell weather-cell"><span class="meta">CONDITIONS</span><strong>Damp <em> / </em> Dawn</strong></div>
+      <div class="course-cell elevation-cell"><span id="elevation-label" class="meta">ELEVATION DROP</span><strong id="menu-drop">—</strong></div>
+      <div class="course-cell weather-cell"><span class="meta">CONDITIONS</span><strong>Damp <em> / </em> <span id="course-light">Dawn</span></strong></div>
       <button id="view-car" class="course-cell vehicle-cell" aria-label="View car, Toyota GR86 NEO86"><span class="meta">VIEW CAR <span aria-hidden="true">↗</span></span><strong>Toyota GR86 <small>NEO86</small></strong></button>
     </section>
   </main>
@@ -59,8 +62,8 @@
   <section id="hud" aria-label="Driving instruments" hidden>
     <div class="timing instrument"><span class="meta">RUN TIME</span><strong id="clock">00:00.00</strong><div class="timing-sector"><i></i><span id="sector">S1 / CEDAR RIDGE</span></div></div>
     <div class="cargo instrument"><span class="meta">TOFU CONDITION</span><strong id="condition">100<small>%</small></strong><span id="cargo-meter"><i></i></span><span id="total-score">0 DRIFT PTS</span></div>
-    <div id="map-unit" class="instrument"><div class="map-heading"><span class="meta">HARUNA PASS</span><span lang="ja">榛名山</span></div><canvas id="hud-map" width="280" height="154" aria-label="Route and car position"></canvas><div class="route-progress"><i id="progress-fill"></i></div><span id="remaining">— KM TO DELIVERY</span></div>
-    <div class="speed-unit instrument"><div class="speed-numbers"><div class="gear-group"><span class="meta">GEAR</span><b id="gear">1</b></div><strong id="speed">0</strong><span class="speed-unit-label">KM/H</span></div><div id="tach" aria-hidden="true"></div><div class="rpm-row"><span id="rpm">1,050 RPM</span><span>8,000</span></div></div>
+    <div id="map-unit" class="instrument"><div class="map-heading"><span id="hud-course" class="meta">HARUNA PASS</span><span lang="ja">榛名山</span></div><canvas id="hud-map" width="280" height="154" aria-label="Route and car position"></canvas><div class="route-progress"><i id="progress-fill"></i></div><span id="remaining">— KM TO DELIVERY</span></div>
+    <div class="speed-unit instrument"><div class="speed-numbers"><div class="gear-group"><span class="meta">GEAR</span><b id="gear">1</b></div><strong id="speed">0</strong><span class="speed-unit-label">KM/H</span></div><div id="tach" aria-hidden="true"></div><div class="rpm-row"><span id="rpm">1,050 RPM</span><span id="boost" aria-label="Turbo boost">0.00 BAR</span></div></div>
     <div id="chain" class="chain" hidden><span class="meta">DRIFT CHAIN <span id="slip-angle"></span></span><strong id="chain-points">0</strong><span id="multiplier">×1.0</span></div>
     <div id="countdown" hidden><span id="count-label" class="meta">START GRID</span><strong id="count-number">3</strong></div>
     <div id="toast" role="status" hidden></div>
@@ -95,6 +98,7 @@
   <script src="js/wet-road.js"></script>
   <script src="js/spray.js"></script>
   <script src="js/rock-cuts.js"></script>
+  <script src="js/drift-effects.js"></script>
   <script src="js/world.js"></script>
   <script src="js/radio.js"></script>
   <script src="js/audio.js"></script>

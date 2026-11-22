@@ -1,8 +1,14 @@
 # Tofu Touge
 
-A Three.js downhill drift game set on a fictional, Haruna-inspired pass in Gunma. Take a panda-painted Toyota GR86 down 3.11 km of wet switchbacks, dropping 257 m before the delivery at the tofu shop. The car has rear-wheel-drive arcade handling, an automatic five-speed shift map, and three driving cameras.
+A Three.js drift game set on a fictional, Haruna-inspired pass in Gunma. Take the panda-painted turbo Toyota GR86 down 3.11 km of wet switchbacks at dawn, or start at Fujiwara Tofu after dark and climb 257 m to the summit. The two deliveries share the same road and have separate best times and scores.
 
-**[Play in your browser](https://bhaisley.github.io/tofu-touge/)** · [Download the offline game](https://github.com/bhaisley/tofu-touge/releases/download/v0.1.0/Tofu-Touge.html) · [Watch the full run](https://bhaisley.github.io/tofu-touge/docs/media/haruna-full-run.mp4)
+**[Play in your browser](https://bhaisley.github.io/tofu-touge/)** · [Download the offline game](https://github.com/bhaisley/tofu-touge/releases/latest/download/Tofu-Touge.html) · [Watch the full downhill run](https://bhaisley.github.io/tofu-touge/docs/media/haruna-full-run.mp4)
+
+## Haruna after dark
+
+![The NEO86 climbing Five Hairpins at night, with headlights on the wet pavement and twin exhaust flames](docs/media/haruna-night-ascent.jpg)
+
+Choose **Uphill · Night** on the title screen to leave Fujiwara Tofu and climb through Valley Climb, Five Hairpins and Cedar Summit. Headlights pick out the guardrails and lane markings between pools of light. This frame is from a complete night delivery using the standard gamepad inputs.
 
 ## Promotional concept
 
@@ -14,7 +20,7 @@ An original illustrated poster for the Haruna Downhill release.
 
 [![Watch the full descent. The NEO86 holds a slide on the final approach to the tofu shop.](docs/media/valley-approach.jpg)](https://bhaisley.github.io/tofu-touge/docs/media/haruna-full-run.mp4)
 
-The delivery clock stops at **02:21.04** with **6,732 drift points** and **100% tofu condition**. The peak slide reaches **40.1°**. A scripted driver used the standard analog gamepad controls for the entire run, from the starting grid through all three sectors. The stereo audio comes from the game, including the engine, tires and the radio’s transition from *Daybreak Signal* to *Kōri no Hibana*.
+In the original v0.1.0 downhill release, the delivery clock stops at **02:21.04** with **6,732 drift points** and **100% tofu condition**. The peak slide reaches **40.1°**. A scripted driver used the standard analog gamepad controls for the entire run, from the starting grid through all three sectors. The stereo audio comes from the game, including the engine, tires and the radio’s transition from *Daybreak Signal* to *Kōri no Hibana*.
 
 [Watch in your browser · 720p60](https://bhaisley.github.io/tofu-touge/docs/media/haruna-full-run.mp4) · [Download the full-resolution video · 1080p60](https://github.com/bhaisley/tofu-touge/releases/download/v0.1.0/Haruna-Full-Run.mp4) · [Repository copy](docs/media/haruna-full-run.mp4)
 
@@ -28,15 +34,15 @@ The delivery clock stops at **02:21.04** with **6,732 drift points** and **100% 
 | **NEO86 · walkaround** | **Tofu delivered · all three sector splits** |
 | ![The playable white-and-black NEO86 in front of a torii gate](docs/media/neo86-walkaround.png) | ![Delivery results with a time of 02:21.04, 6,732 drift points and 100 percent tofu condition](docs/media/tofu-delivered.png) |
 
-These screenshots come directly from the released game. [Capture details](MEDIA_PROVENANCE.json)
+These dawn screenshots come directly from v0.1.0. [Capture details](MEDIA_PROVENANCE.json)
 
 ## Play
 
-Open the browser edition or download **Tofu-Touge.html** and open it in a browser with WebGL enabled. The single-file edition embeds the renderer, models, art, fonts, soundtrack, and effects for offline play. [Play online](https://bhaisley.github.io/tofu-touge/) · [Download the standalone game](https://github.com/bhaisley/tofu-touge/releases/download/v0.1.0/Tofu-Touge.html)
+Open the browser edition or download **Tofu-Touge.html** and open it in a browser with WebGL enabled. The single-file edition embeds the renderer, models, art, fonts, soundtrack, and effects for offline play. [Play online](https://bhaisley.github.io/tofu-touge/) · [Download the standalone game](https://github.com/bhaisley/tofu-touge/releases/latest/download/Tofu-Touge.html)
 
 Select **View Car** on the title screen to inspect the playable GR86. Drag or use the arrow keys to orbit, and scroll, pinch, or press + / − to zoom. The right stick rotates the view on a standard gamepad. **Back** or Escape returns to the menu. [Compare the rear and paint in game](playtest/gr86-rear-and-paint.jpg) · [Rear glass close-up](playtest/neo86-rear-glass.jpg) · [Walkaround photographs](playtest/neo86-walkaround.jpg)
 
-Open **Radio** to audition any track and select the music for your run. The five songs play in sequence. Press **N** or **D-pad right** to skip while driving. Opening the radio mid-run pauses the car and keeps the music playing. The game remembers your selection between visits.
+Open **Radio** to audition any track and select the music for your run. The five songs play in sequence. Press **N** or **D-pad right** to skip while driving. Opening the radio mid-run pauses the car and keeps the music playing. **Radio** and **Pause** both have separate **Sound effects** and **Music** sliders. The game remembers your levels, selected course and song between visits.
 
 Watch the GR86 drift through a Haruna hairpin with **Kōri no Hibana** on the radio. The seven-second chase-camera recording includes the engine, tire screech and music as mixed by the game. [Watch the hairpin](playtest/haruna-hairpin.mp4) · [Hear the engine in isolation](playtest/ae86-engine-run.m4a)
 
@@ -50,7 +56,7 @@ python3 -m http.server 8477 --bind 127.0.0.1 --directory dist
 
 Use WASD or the arrow keys to drive. Brake before a hairpin, turn in and pull Space briefly to lock the rear wheels. Release Space, feed in throttle and tap opposite steer to balance the slide. The drift readout shows your body slip angle. Straightening up banks the chain. Barrier hits cost tofu condition and break a live chain. Reaching zero condition ends the delivery. R recovers the car with a three-second penalty, C cycles cameras, M toggles sound, and Escape pauses.
 
-The Controls screen lists bindings for standard gamepads and touchscreens. A run has three sector splits. The game keeps the best completed time and drift score in the browser's local storage when available. The pause menu has a separate music switch.
+The Controls screen lists bindings for standard gamepads and touchscreens. On a controller, choose a course with D-pad left or right on the title screen. On a phone, the steering and pedals accept simultaneous touches. In portrait the handbrake sits above the brake, leaving room to keep a thumb on the accelerator. The results show all three sector splits. The game saves personal bests for each direction in the browser when local storage is available.
 
 ## Build and assets
 
@@ -72,17 +78,17 @@ The soundtrack was composed and rendered locally with YuE2. The radio crossfades
 | [Daybreak Signal](dist/assets/music/daybreak-signal.mp3) | Guitar-led J-pop with an original Japanese chorus | 143 BPM |
 | [Kōri no Hibana](dist/assets/music/kori-no-hibana.mp3) | Japanese kawaii metal with a sung refrain and double-kick drums | 180 BPM |
 
-Fifteen SuperCollider sounds cover the engine, tires, road noise, and event cues. The editable synthesis code is in `sound/sfx/`. [Artwork and material credits](art-direction.md)
+Twenty SuperCollider sounds cover the engine, turbo, tires, road noise, and event cues. Pressure builds with sustained throttle and engine speed, up to 0.35 bar. Lifting or upshifting under boost vents the blow-off valve. A hot exhaust can pop on the throttle cut, with a brief flame at each outlet. Front-tire scrub, rear breakaway and handbrake lock have separate voices. The editable synthesis code is in `sound/sfx/`. [Artwork and material credits](art-direction.md)
 
 The engine uses original synthesized exhaust recordings at 960, 2,400, 3,600 and 6,600 RPM, with separate intake and closed-throttle sounds. All six follow the same four-cylinder firing cycle through shifts. The exterior exhaust was tuned against the parked and departing car in noplansco’s mountain run. The onboard section informed the fuller low mids in bonnet view. Passing a stone retaining wall adds one short reflection on that side of the road. [Parked and pulling away at 0:43](https://www.youtube.com/watch?v=sBC2tZZuXr0&t=43s) · [Onboard at 1:22](https://www.youtube.com/watch?v=sBC2tZZuXr0&t=82s) · [Exterior pass at 1:30](https://www.youtube.com/watch?v=sBC2tZZuXr0&t=90s)
 
 ## Handling and chase cameras
 
-The chassis runs at 120 Hz. The front and rear tires share their available grip between cornering and longitudinal force. Braking shifts load forward, power goes to the rear axle, and a short rear lock can initiate a drift. The steering and yaw assists are tuned for the pass and digital inputs. The cameras, wheels and tire trails share an interpolated pose. The wheels meet the local road triangles while the sprung body rolls and pitches under load.
+The chassis runs at 120 Hz. The front and rear tires share their available grip between cornering and longitudinal force. Braking shifts load forward, power goes to the rear axle, and a short rear lock can initiate a drift. Both rear contact patches lay rubber in proportion to slip. Hot tires leave a smoke plume on drier asphalt and throw more spray across standing water. The cameras, wheels and tire trails share an interpolated pose.
 
 Run `node tools/check-handling.cjs` to reproduce braking, throttle oversteer, a keyboard and an analog hairpin, a complete delivery, and a glancing barrier hit. Run `node tools/check-presentation.cjs` to check motion between physics ticks across several display rates and a recovery. Run `node sound/sfx/check-mix.cjs` to check tire levels, engine response, the camera perspectives and wall reflections.
 
-With Playwright and Chromium installed, `node tools/check-radio.cjs` exercises the offline song picker, measures audible output from all five tracks, and checks crossfades, rapid skips, pause and resume, and the saved selection. Set `CHROME_BIN` to use an existing Chromium installation.
+With Playwright and Chromium installed, `node tools/check-radio.cjs` exercises the offline song picker, measures audible output from all five tracks, and checks crossfades, rapid skips, pause and resume, and the saved selection. `node tools/check-touch.cjs` drives both stages and checks phone layouts, simultaneous touches, legacy records and the independent volume controls. Set `CHROME_BIN` to use an existing Chromium installation.
 
 Run `node tools/check-backlight.cjs` to measure the glass and cage clearance, trace the two-tone finish behind both wheels, verify the plate mounting and check the under-spoiler stop lamp and both outer brake lights in the offline game’s two chase cameras.
 

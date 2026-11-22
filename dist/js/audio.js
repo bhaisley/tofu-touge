@@ -12,10 +12,14 @@
     "engine-intake": 5400,
   };
   const engineNames = Object.keys(engineRpm);
-  const surfaceSounds = ["tire-scrub", "tire-squeal", "road-air"];
+  const continuousSounds = ["tire-scrub", "tire-squeal", "tire-front", "tire-lock", "turbo-spool", "road-air"];
   const cues = {
     shift: { volume: 0.32, interval: 0.15, varies: true },
     overrun: { volume: 0.25, interval: 0.68, varies: true },
+    // The drivetrain owns both releases. Two simulation events can reach
+    // the audio clock in one display frame when the renderer catches up.
+    blowoff: { volume: 0.81, interval: 0, varies: true },
+    afterfire: { volume: 0.90, interval: 0, varies: true },
     impact: { volume: 0.63, interval: 0.38, varies: true },
     checkpoint: { volume: 0.31, interval: 0.50 },
     go: { volume: 0.33, interval: 0.50 },
@@ -45,6 +49,8 @@
       this.active = false;
       this.enabled = true;
       this.musicEnabled = true;
+      this.soundVolume = 1;
+      this.musicVolume = 1;
       this.buffers = new Map();
       this.loading = new Map();
       this.loops = new Map();
@@ -56,9 +62,12 @@
       this.lastMix = 0;
       this.shiftStarted = -Infinity;
       this.filteredLoad = 0;
+      this.tireStrain = 0;
+      this.compressorSpeed = 0;
       this.telemetry = {
         rpm: 1050, speed: 0, slip: 0, throttle: 0, brake: 0, gear: 0,
-        engineLoad: 0, tireScrub: 0, handbrake: false, angle: 0, cameraMode: 0, wall: null,
+        engineLoad: 0, boost: 0, tireScrub: 0, frontSlipAngle: 0, rearSlipAngle: 0,
+        rearLock: 0, wheelspin: 0, hasAxleSlip: false, handbrake: false, angle: 0, cameraMode: 0, wall: null,
       };
     }
 
@@ -94,9 +103,15 @@
         ceiling.oversample = "2x";
         this.master.connect(limiter).connect(ceiling).connect(ctx.destination);
 
+        this.soundBus = ctx.createGain();
+        this.musicBus = ctx.createGain();
+        this.soundBus.gain.value = this.soundVolume;
+        this.musicBus.gain.value = this.musicVolume;
+        this.soundBus.connect(this.master);
+        this.musicBus.connect(this.master);
         this.driveBus = ctx.createGain();
         this.driveBus.gain.value = this.active ? 1 : 0;
-        this.driveBus.connect(this.master);
+        this.driveBus.connect(this.soundBus);
         this.engineFilter = ctx.createBiquadFilter();
         this.engineFilter.type = "lowpass";
         this.engineFilter.Q.value = 0.67;
@@ -139,7 +154,9 @@
           .connect(this.wallGain).connect(this.wallPan).connect(this.driveBus);
         this.tireBus = ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createGain();
         this.tireBus.connect(this.driveBus);
-        this.radio?.connect(ctx, this.master);
+        this.frontTires = ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createGain();
+        this.frontTires.connect(this.driveBus);
+        this.radio?.connect(ctx, this.musicBus);
       }
       const ctx = this.context;
       const resumed = ctx.state === "running"
@@ -150,7 +167,7 @@
       // whole number of four-stroke cycles and all receive the same RPM ramp.
       Promise.all(engineNames.map(name => this.load(name, soundUrl(name))))
         .then(() => this.startEngineVoices());
-      for (const name of [...surfaceSounds, ...Object.keys(cues)]) this.load(name, soundUrl(name));
+      for (const name of [...continuousSounds, ...Object.keys(cues)]) this.load(name, soundUrl(name));
       this.syncMusic();
       return resumed;
     }
@@ -167,13 +184,15 @@
         .then(bytes => ctx.decodeAudioData(bytes))
         .then(buffer => {
           this.buffers.set(name, buffer);
-          if (surfaceSounds.includes(name)) {
-            const bus = name === "road-air" ? this.driveBus : this.tireBus;
+          if (continuousSounds.includes(name)) {
+            const bus = name === "turbo-spool" ? this.intakeFilter : name === "road-air" ? this.driveBus :
+              name === "tire-front" ? this.frontTires : this.tireBus;
             this.startLoop(name, bus, ctx.currentTime, 1);
             this.mix();
           } else if (this.pendingCue.has(name)) {
             const pending = this.pendingCue.get(name);
-            if (performance.now() - pending.time < 700) this.event(name, pending.strength);
+            const expiry = name === "afterfire" || name === "blowoff" ? 75 : 700;
+            if (performance.now() - pending.time < expiry) this.event(name, pending.strength);
           }
         })
         .catch(reason => console.warn("Tofu Touge audio could not load " + name, reason.message))
@@ -231,6 +250,16 @@
       this.syncMusic();
     }
 
+    setSoundVolume(value) {
+      this.soundVolume = unit(valid(value, this.soundVolume));
+      if (this.soundBus) this.ramp(this.soundBus.gain, this.soundVolume, .018);
+    }
+
+    setMusicVolume(value) {
+      this.musicVolume = unit(valid(value, this.musicVolume));
+      if (this.musicBus) this.ramp(this.musicBus.gain, this.musicVolume, .024);
+    }
+
     setActive(active) {
       this.active = !!active;
       if (this.driveBus) this.ramp(this.driveBus.gain, this.active ? 1 : 0, 0.025);
@@ -238,6 +267,8 @@
         this.pendingCue.clear();
         this.telemetry.gear = 0;
         this.shiftStarted = -Infinity;
+        this.tireStrain = 0;
+        this.compressorSpeed = 0;
       }
       this.filteredLoad = this.telemetry.engineLoad;
       this.nextMix = 0;
@@ -273,6 +304,10 @@
         brake,
         engineLoad: unit(valid(data.engineLoad, gear < 0 ? brake : throttle)),
         tireScrub: unit(valid(data.tireScrub, slip)),
+        boost: unit(data.boost),
+        hasAxleSlip: Number.isFinite(data.frontSlipAngle) && Number.isFinite(data.rearSlipAngle),
+        frontSlipAngle: valid(data.frontSlipAngle), rearSlipAngle: valid(data.rearSlipAngle),
+        rearLock: unit(valid(data.rearLock, data.handbrake ? 1 : 0)), wheelspin: unit(data.wheelspin),
         handbrake: !!data.handbrake,
         angle: valid(data.angle),
         cameraMode: data.cameraMode === 2 ? 2 : data.cameraMode === 1 ? 1 : 0,
@@ -298,15 +333,11 @@
       const dt = clamp(now - this.lastMix, 0, 0.12);
       this.lastMix = now;
       const { rpm, throttle, brake, gear, engineLoad, speed, angle, slip, tireScrub, handbrake,
-        cameraMode, wall } = this.telemetry;
+        boost, hasAxleSlip, frontSlipAngle, rearSlipAngle, rearLock, wheelspin, cameraMode, wall } = this.telemetry;
       const pedal = gear < 0 ? brake : throttle;
       const load = 0.84 * engineLoad + 0.16 * pedal;
       const throttleChange = load - this.filteredLoad;
       this.filteredLoad += throttleChange * (1 - Math.exp(-dt / 0.16));
-      if (pedal < 0.12 && throttleChange < -0.24 && rpm > 3250 && speed > 16 && now - this.shiftStarted > 0.30) {
-        const strength = clamp(-throttleChange * (0.33 + rpm / 10500), 0.13, 0.86);
-        this.event("overrun", strength);
-      }
 
       const low = smooth(1220, 2110, rpm);
       const mid = smooth(2630, 3550, rpm);
@@ -332,6 +363,11 @@
       const intake = smooth(1460, 3070, rpm) *
         ((0.17 + 0.28 * onCam) * load ** 1.55 + 0.30 * tipIn);
       this.setLayer("engine-intake", rpm / engineRpm["engine-intake"], intake * shiftPower * inletLevel, now, 0.016);
+      this.compressorSpeed += (boost - this.compressorSpeed) *
+        (1 - Math.exp(-dt * (boost > this.compressorSpeed ? 12 : 5.8)));
+      const spool = this.compressorSpeed;
+      this.setLayer("turbo-spool", .47 + 1.10 * Math.sqrt(spool) + .16 * onCam,
+        .47 * smooth(.035, .86, spool) * (.39 + .61 * Math.sqrt(load)) * inletLevel, now, .040);
       this.ramp(this.engineFilter.frequency, (bonnet ? 0.60 : 1) *
         (1850 + 4130 * Math.sqrt(load) + rpm * 0.24), 0.045, now);
       this.ramp(this.intakeFilter.frequency, (bonnet ? 0.60 : 0.94) *
@@ -351,17 +387,30 @@
         this.ramp(this.wallGain.gain, 0, 0.045, now);
       }
 
-      // Axle scrub catches lockup and front push. Body angle keeps the rear
-      // tires audible during a held slide, including a countersteered one.
+      // The front chirr follows steering slip. The rear voice catches at
+      // breakaway, howls at steady slip, then bends down as the tread hooks up.
       const moving = smooth(5, 22, speed);
-      const rearSlide = Math.max(slip, clamp((Math.abs(angle) - 0.072) / 0.54, 0, 1));
-      const rubber = moving * Math.max(smooth(0.085, 0.44, rearSlide), smooth(0.14, 0.63, tireScrub));
+      const rearSlide = Math.max(slip, smooth(.075, .47, Math.abs(rearSlipAngle)),
+        clamp((Math.abs(angle) - .072) / .54, 0, 1), .54 * wheelspin);
+      const front = moving * smooth(.078, .32, Math.abs(frontSlipAngle));
+      const lock = moving * smooth(.20, .94, rearLock);
+      const rubber = moving * Math.max(smooth(.085, .44, rearSlide), smooth(.14, .63, tireScrub));
       const breakaway = handbrake ? smooth(0.075, 0.39, Math.max(rearSlide, tireScrub)) : 0;
-      const squeal = moving * Math.max(smooth(0.095, 0.43, rearSlide), smooth(0.31, 0.75, tireScrub), breakaway);
-      const pitch = 0.83 + 0.19 * smooth(12, 100, speed) + 0.15 * squeal;
-      this.setLayer("tire-scrub", 0.83 + 0.26 * rubber + 0.09 * smooth(12, 100, speed), 0.44 * rubber, now, 0.038);
-      this.setLayer("tire-squeal", pitch, 0.78 * Math.sqrt(squeal), now, 0.026);
+      const squeal = moving * Math.max(smooth(.095, .43, rearSlide), breakaway,
+        hasAxleSlip ? 0 : smooth(.31, .75, tireScrub));
+      const bite = squeal - this.tireStrain;
+      this.tireStrain += bite * (1 - Math.exp(-dt * (bite > 0 ? 10 : 6.8)));
+      const roadSpeed = smooth(12, 100, speed);
+      const pitch = .79 + .19 * roadSpeed + .23 * this.tireStrain + .16 * bite - .105 * lock;
+      this.setLayer("tire-scrub", .81 + .25 * rubber + .10 * roadSpeed, .45 * rubber, now, .048);
+      this.setLayer("tire-squeal", pitch, .80 * Math.sqrt(squeal) * (1 - .23 * lock),
+        now, bite >= 0 ? .021 : .082);
+      this.setLayer("tire-front", .84 + .18 * roadSpeed + .19 * front,
+        .44 * front * (bonnet ? 1.26 : .94), now, front > .10 ? .025 : .065);
+      this.setLayer("tire-lock", .72 + .29 * roadSpeed + .08 * lock,
+        .52 * lock * (bonnet ? .83 : 1.02), now, lock > .12 ? .019 : .068);
       if (this.tireBus.pan) this.ramp(this.tireBus.pan, clamp(-angle * 0.39, -0.22, 0.22), 0.068, now);
+      if (this.frontTires?.pan) this.ramp(this.frontTires.pan, clamp(-frontSlipAngle * .55, -.18, .18), .060, now);
       const rush = smooth(8, 145, speed);
       this.setLayer("road-air", 0.73 + 0.51 * rush, 0.25 * rush, now, 0.075);
     }
@@ -384,9 +433,13 @@
       source.buffer = buffer;
       if (cue.varies) source.playbackRate.value = 0.96 + Math.random() * 0.08;
       if (name === "overrun") source.playbackRate.value *= 0.84 + this.telemetry.rpm / 16000;
+      if (name === "blowoff") source.playbackRate.value *= 1.18 - .21 * unit(strength);
+      if (name === "afterfire") source.playbackRate.value *= 1.13 - .17 * unit(strength);
       const gain = ctx.createGain();
       gain.gain.value = cue.volume * unit(strength);
-      const bus = name === "finish" ? this.master : name === "overrun" ? this.engineFilter : this.driveBus;
+      const bus = name === "finish" ? this.soundBus :
+        name === "overrun" || name === "afterfire" ? this.engineFilter :
+        name === "blowoff" ? this.intakeFilter : this.driveBus;
       source.connect(gain).connect(bus);
       source.onended = () => { source.disconnect(); gain.disconnect(); };
       source.start();

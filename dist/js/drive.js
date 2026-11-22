@@ -88,6 +88,12 @@
       this.slip = 0;
       this.tireScrub = 0;
       this.engineLoad = 0;
+      this.boost = this.turboSpeed = this.turboPedal = this.exhaustHeat = 0;
+      this.releaseArmed = false;
+      this.valveCharged = false;
+      this.valveRecovery = 0;
+      this.afterfireTime = -1;
+      this.afterfireStrength = 0;
       this.wheelspin = 0;
       this.rearDriveFraction = 0;
       this.frontSlipAngle = 0;
@@ -155,6 +161,48 @@
         this.shiftTime = 0.18;
         this.events.push({ type: 'shift' });
       }
+    }
+
+    updateTurbo(dt, upshift) {
+      // Rotor inertia and charge pressure have different time constants. A
+      // throttle cut empties the inlet while the rotating assembly coasts.
+      const pedal = this.gear > 0 ? this.throttle : 0;
+      const coupled = (1 - .76 * this.rearLock) * (this.shiftTime > 0 ? .15 : 1);
+      const exhaust = smooth(1550, 4300, this.rpm) * smooth(.08, .92, this.engineLoad) * coupled;
+      this.turboSpeed = follow(this.turboSpeed, exhaust, exhaust > this.turboSpeed ? 3.0 : 2.4, dt);
+      const target = this.turboSpeed * smooth(.13, .89, pedal * coupled);
+      const lift = pedal < .49 && this.turboPedal - pedal > .23;
+      this.valveRecovery = Math.max(0, this.valveRecovery - dt);
+      if (this.afterfireTime >= 0) {
+        this.afterfireTime -= dt;
+        if (this.afterfireTime < 0) this.events.push({type:'afterfire', strength:this.afterfireStrength});
+      }
+      if (this.releaseArmed && (lift || upshift)) {
+        if (this.valveCharged && this.boost > .30 && this.gear > 0) {
+          const charge = smooth(.25, .95, this.boost);
+          this.events.push({type:'blowoff', strength:(.31 + .69 * charge) * (upshift ? .85 : 1)});
+          this.boost *= upshift ? .56 : .32;
+          this.valveRecovery = .22;
+        }
+        if (this.afterfireTime < 0 && this.rpm > 3560 && this.exhaustHeat > .27 && this.speed > 4) {
+          this.afterfireStrength = clamp(.24 + .59 * this.exhaustHeat + .15 * smooth(3800, 6800, this.rpm), 0, 1);
+          this.afterfireTime = upshift ? .045 : .084;
+        }
+        this.releaseArmed = false;
+        this.valveCharged = false;
+      } else if (this.shiftTime === 0 && pedal > .66 && this.engineLoad > .52) {
+        this.releaseArmed = true;
+        // The bypass must finish its discharge and the plenum must fill
+        // again before a second cut can release another audible charge.
+        if (this.valveRecovery === 0 && this.boost > .46) this.valveCharged = true;
+      } else if (pedal < .16) {
+        this.releaseArmed = false;
+        this.valveCharged = false;
+      }
+      this.turboPedal = follow(this.turboPedal, pedal, 6.4, dt);
+      this.boost = follow(this.boost, target, target > this.boost ? 8.5 : 14, dt);
+      const heat = smooth(2750, 5650, this.rpm) * this.engineLoad * coupled;
+      this.exhaustHeat = follow(this.exhaustHeat, heat, heat > this.exhaustHeat ? 2.4 : 1.7, dt);
     }
 
     updateSlide(dt, steer, speed) {
@@ -229,7 +277,9 @@
       const load = pedal * (this.shiftTime > 0 ? 0.20 : 1);
       this.engineLoad = follow(this.engineLoad, load, load > this.engineLoad ? 13 : 23, dt);
 
-      let motive = this.engineLoad * engineTorque(this.rpm) * ratio * 0.89 / tireRadius;
+      // The wastegate limits gauge pressure to .35 bar. Charge heating and
+      // pumping losses leave an 18% peak torque increase at the wheels.
+      let motive = this.engineLoad * engineTorque(this.rpm) * (1 + .18 * this.boost) * ratio * .89 / tireRadius;
       if (reverse) motive = -Math.min(motive, mass * 3.2) * (1 - smooth(5.1, 6.6, -u));
       if (!reverse && speed > 4) {
         const overrun = (1 - this.throttle) * (0.19 + this.rpm / 7100 * 0.67);
@@ -444,7 +494,9 @@
       const crossing = steer * this.wheel < 0;
       this.wheel = follow(this.wheel, steer, crossing || !steer ? 10.8 : 7.2, dt);
       const u = this.speed * Math.cos(this.angle);
+      const previousGear = this.gear;
       this.updateTransmission(dt, u);
+      this.updateTurbo(dt, previousGear > 0 && this.gear > previousGear);
       this.updateSlide(dt, steer, Math.abs(this.speed));
       this.simulateChassis(dt);
       this.resolveRoad();

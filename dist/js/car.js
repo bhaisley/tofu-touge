@@ -449,8 +449,8 @@
     const wheelCarrier=new T.Group();wheelCarrier.name='Wheel carriers';group.add(suspension,wheelCarrier);
     const materials=carMaterials(),displayPlate=bindDisplayPlate(materials.marks);
     const b=new GeometryBatch(materials),driverBatch=new GeometryBatch(materials);
-    const brakeLight={value:0},lampSources={};
-    const api={b,driverBatch,Batch:GeometryBatch,materials,dims,profile,atlasUV,texture,box,rod,tube,wheelCarrier,lampSources};
+    const brakeLight={value:0},lampSources={},exhaustOutlets=[];
+    const api={b,driverBatch,Batch:GeometryBatch,materials,dims,profile,atlasUV,texture,box,rod,tube,wheelCarrier,lampSources,exhaustOutlets};
     model.buildBody(api);model.buildFascias(api);
     bindLampSpill(materials,lampSources,brakeLight);
     const body=b.build('NEO86 bodywork');body.position.y=-suspension.position.y;suspension.add(body);
@@ -486,7 +486,7 @@
       materials.stopLamp.emissiveIntensity=.012+1.50*brakeLight.value;
     }
     function setDisplayMode(parked){driver.visible=!parked;displayPlate.value=parked?1:0;}
-    return {group,body,driver,suspension,wheels,setMotion,setDisplayMode,axles:{front:dims.frontAxle,rear:dims.rearAxle,
+    return {group,body,driver,suspension,wheels,exhaustOutlets,setMotion,setDisplayMode,axles:{front:dims.frontAxle,rear:dims.rearAxle,
       frontTrack:dims.frontTrack,rearTrack:dims.rearTrack,halfTrack:(dims.frontTrack+dims.rearTrack)/2,radius:dims.tireRadius}};
   };
 })();

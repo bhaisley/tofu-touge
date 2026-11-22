@@ -136,6 +136,10 @@
         label(symbols[i],i*104+53,76,57,"#d7cfb4","center");
       }
     });
+    art("summit",987,818,655,196,(w,h)=>{
+      c.scale(w/665,h/274);
+      guide("榛名湖","Lake Haruna","峠方面   SUMMIT")(665,274);
+    });
     const texture = new T.CanvasTexture(canvas);
     texture.colorSpace = T.SRGBColorSpace; texture.anisotropy = 8;
     new T.ImageLoader().load(artUrl("roadside-vending.webp"), vendPhoto => {
@@ -325,7 +329,7 @@
     eye.userData.tougeReflectionPass=true;eye.userData.tougeMirrorProbe=true;
     const direction=new T.Vector3(),screen=new T.Vector3();
     let target=null,active=null,previous=-Infinity,updating=false;
-    return (renderer,camera,time)=>{
+    return (renderer,camera,time,night)=>{
       if(updating || camera.userData.tougeReflectionPass || renderer.getRenderTarget())return;
       for(const {mesh,center,nearSq,farSq} of details){
         const distance=center.distanceToSquared(camera.position);
@@ -344,7 +348,7 @@
       }
       const u=profile.uniforms;
       if(!nearest){active=null;u.localReady.value=0;return;}
-      if(nearest===active && time>=previous && time-previous<(mobile?.32:.16))return;
+      if(nearest===active && u.localReady.value && time>=previous && time-previous<(mobile?.32:.16))return;
       if(!target){
         const size=mobile?96:160;
         target=new T.WebGLRenderTarget(size,size,{minFilter:T.LinearFilter,magFilter:T.LinearFilter,depthBuffer:true});
@@ -353,7 +357,7 @@
       active=nearest;previous=time;updating=true;
       const before=renderer.getRenderTarget(),shadow=renderer.shadowMap.autoUpdate,xr=renderer.xr.enabled;
       eye.position.copy(active.centre).addScaledVector(active.face,.11);
-      eye.lookAt(active.look);eye.updateMatrixWorld(true);
+      eye.lookAt(night?active.uphillLook:active.look);eye.updateMatrixWorld(true);
       u.viewRotation.value.setFromMatrix4(eye.matrixWorldInverse);
       try{
         profile.material.visible=false;renderer.xr.enabled=false;renderer.shadowMap.autoUpdate=false;
@@ -390,6 +394,8 @@
       materials.interior.map=map;materials.interior.needsUpdate=true;
     });
     const mirrorProfile=trafficMirrorMaterial(),mirrors=[],details=[];
+    const climbSigns=new Batch(true),climbPosts=new Batch(),lightboxes=new Batch(true),fixtures=[];
+    const rearFace=f=>(x,y,z)=>f(-x,y,-z);
     // The distant hillside needs road silhouettes. Below-pixel bolt heads,
     // glazing and reflectors need far less range than steel and porcelain poles.
     const drawDistance={hardware:42,steel:150,farSteel:470,concrete:370,solid:340,lit:180,
@@ -578,6 +584,7 @@
       b.lit.box(f,inwards*1.66,h-.105,0,.56,.036,.206,0xf9e0b6);
       for(const x of [1.45,1.63,1.82])b.hardware.box(f,inwards*x,h-.123,0,.014,.012,.215,0x929188);
       b.glow.panel(f,inwards*1.66,h-.08,.06,.66,.36,[0,0,1,1],false,0xfbd4a3);
+      fixtures.push({position:f(inwards*1.66,h-.13,0),aim:f(inwards*5.35,0,0),color:0xffc997,power:365,reach:27});
     }
 
     function guideSign(s,side,key) {
@@ -598,6 +605,7 @@
         }
       }
       b.signs.panel(f,0,center,.052,width,height,tiles[key]);
+      climbSigns.panel(rearFace(f),0,center,.228,width,height,tiles.summit);
     }
     guideSign(course.start+40,-1,"spa");
     guideSign(split+164,1,"ridge");
@@ -613,6 +621,7 @@
       if(key==="limit")b.steel.tube(f(0,h,-.014),f(0,h,.003),w*.485,w*.485,0xacb3a8,28,true);
       if(key==="turn")b.steel.face([f(0,h-.352,-.009),f(.352,h,-.009),f(0,h+.352,-.009),f(-.352,h,-.009)],0xb3b7aa);
       b.signs.panel(f,0,h,.015,w,key==="shield"?.64:.74,tiles[key],mirror);
+      if(key!=="turn")climbSigns.panel(rearFace(f),0,h,.109,w,key==="shield"?.64:.74,tiles[key]);
     }
     marker(course.start+17,1,"shield");
     marker(course.start+221,-1,"limit");
@@ -627,6 +636,7 @@
       b.steel.box(f,0,1.92,0,1.17,.74,.052,0xa2a59b);
       b.farSteel.box(f,0,1.92,0,1.17,.74,.05,0x969d93);
       b.signs.panel(f,0,1.92,.031,1.14,.715,tiles.chevron,!right);
+      climbSigns.panel(rearFace(f),0,1.92,.031,1.14,.715,tiles.chevron,right);
     }
     function convexMirror(s,side,turn) {
       const f=frame(course,s,side*7.46,turn*.24), b=section(s);
@@ -637,7 +647,7 @@
       face.normalize();
       const {transform:local,mesh}=makeLens(mirrorProfile,centre,face,group);
       limitRange(mesh,"mirror");
-      mirrors.push({centre,face,look});
+      mirrors.push({centre,face,look,uphillLook:course.at(s-22,0,1.22)});
       b.concrete.tube(f(0,-.56,0),f(0,.125,0),.17,.135,0xa8aaa0,12,true);
       b.solid.tube(f(0,-.02,0),f(0,3.32,0),.061,.053,orange,10,true);
       b.steel.tube(f(0,2.89,0),local(0,-.13,-.15),.025,.026,0xa5a9a0,7);
@@ -675,6 +685,9 @@
     for(const {s,k} of turns){
       const outer=-Math.sign(k);
       marker(s-61,-1,"turn",k>0);
+      const f=frame(course,s+61,7.24,Math.PI);
+      climbPosts.tube(f(0,-.53,-.055),f(0,2.64,-.055),.044,.041,0xbbc0b5,8,true);
+      climbSigns.panel(f,0,2.46,.015,.74,.74,tiles.turn,k<0);
       for(const shift of [-22,-6,10,26]) chevron(s+shift,outer,k>0);
       convexMirror(s-12,-outer,Math.sign(k));
       streetLamp(s-32,outer);
@@ -682,6 +695,11 @@
     }
     for(const [s,side] of [[course.start+2,-1],[course.start+95,1],[split-48,-1],
       [course.splits[1]+39,1],[finish-26,1],[finish+16,-1]]) streetLamp(s,side);
+    // The first uphill guide sits on the driver's left, leaving the shop apron open.
+    const firstGuide=frame(course,finish-73,8.4,Math.PI+.035);
+    for(const x of [-1.48,1.48])climbPosts.tube(firstGuide(x,-.7,-.11),firstGuide(x,4.2,-.11),.071,.061,0xb8beb8,8,true);
+    climbPosts.box(firstGuide,0,3.49,0,4.29,1.78,.10,0x9da4a2);
+    climbSigns.panel(firstGuide,0,3.49,.052,4.23,1.72,tiles.summit);
 
     function turnout(start,end,side,depth,tones) {
       // The apron follows the course grade. Its tapered sides join the gravel
@@ -921,6 +939,8 @@
       // Lightbox, enamel projecting sign, shop curtain and a ribbed paper lantern.
       box(-.46,2.87,front+.20,7.81,.76,.35,0x6c6455);
       b.signs.panel(f,-.46,2.865,front+.383,7.63,.64,tiles.shop);
+      lightboxes.panel(f,-.46,2.865,front+.386,7.63,.64,tiles.shop);
+      fixtures.push({position:f(-.55,3.18,front+1.13),aim:f(-.35,.33,front+.42),color:0xffd3a1,power:116,reach:14});
       b.timber.tube(f(-2.09,2.48,front+.245),f(.47,2.48,front+.245),.022,.022,0x978770,8,true);
       const [u,bottom,v,top]=tiles.noren;
       for(let strip=0;strip<5;strip++){
@@ -956,6 +976,10 @@
       box(vx,1.06,vz,1.02,1.99,.65,0x914a3d);
       box(vx,.11,vz,1.02,.14,.68,0x645a50);
       b.signs.panel(f,vx,1.06,vz+.335,.96,1.89,tiles.vend);
+      // Only the glass merchandise bay glows. The lower painted cabinet remains in shadow.
+      const [left,low,right,high]=tiles.vend;
+      lightboxes.panel(f,vx,1.43,vz+.340,.87,1.06,
+        [left+(right-left)*.05,low+(high-low)*.382,right-(right-left)*.05,high-(high-low)*.054]);
       b.pane.panel(f,vx,1.50,vz+.338,.884,.91,[0,0,1,1]);
       for(let i=0;i<6;i++)box(vx+.514,.30+i*.041,vz-.03,.009,.015,.39,0x62534a);
       for(const stack of [[-4.33,.19,front+.55],[-3.45,.19,front+.56],[-4.24,.45,front+.54]]){
@@ -1020,7 +1044,44 @@
         lines.name="Utility lines "+index;limitRange(lines,"wire");group.add(lines);
       }
     }
-    group.userData.updateView=updateRoadsideView(scene,mirrors,mirrorProfile,details);
+    const climb=new T.Group();climb.name="Uphill guides and illuminated shop signs";
+    const signMesh=climbSigns.build(materials.signs),posts=climbPosts.build(materials.farSteel);
+    signMesh.castShadow=true;signMesh.receiveShadow=true;posts.castShadow=true;posts.receiveShadow=true;
+    const displays=lightboxes.build(new T.MeshBasicMaterial({map:atlas.texture,color:0xffe2bb,
+      vertexColors:true,polygonOffset:true,polygonOffsetFactor:-2}));
+    climb.add(signMesh,posts,displays);group.add(climb);
+    // Only two pole/awning lights can contribute near the driver at once.
+    const pools=Array.from({length:2},()=>{
+      const spot=new T.SpotLight(0xffc997,0,27,1.08,.84,2);
+      group.add(spot,spot.target);return spot;
+    });
+    let night=false;
+    group.userData.setNight=value=>{
+      night=value;climb.visible=night;pools.forEach(p=>{p.visible=night;p.intensity=0;});
+      materials.glow.opacity=night?.38:.20;
+      materials.interior.color.setHex(night?0xf5c896:0xe0d8c5);
+      mirrorProfile.uniforms.localReady.value=0;
+    };
+    const updateView=updateRoadsideView(scene,mirrors,mirrorProfile,details);
+    group.userData.updateView=(renderer,camera,time,carPosition=camera.position)=>{
+      if(night){
+        let closest=null,second=null,a=Infinity,b=Infinity,c=Infinity;
+        for(const fixture of fixtures){
+          const d=carPosition.distanceToSquared(fixture.position);
+          if(d<a){c=b;second=closest;b=a;closest=fixture;a=d;}
+          else if(d<b){c=b;second=fixture;b=d;}
+          else if(d<c)c=d;
+        }
+        for(let i=0;i<pools.length;i++){
+          const light=pools[i],f=i?second:closest,dist=Math.sqrt(i?b:a);
+          const handoff=T.MathUtils.smoothstep(Math.sqrt(c)-dist,0,6);
+          light.intensity=f.power*handoff*(1-T.MathUtils.smoothstep(dist,f.reach+5,f.reach+24));
+          light.position.copy(f.position);light.target.position.copy(f.aim);
+          light.color.setHex(f.color);light.distance=f.reach;
+        }
+      }
+      updateView(renderer,camera,time,night);
+    };
     scene.add(group);
     return group;
   };

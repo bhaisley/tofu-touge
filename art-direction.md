@@ -1,6 +1,6 @@
 # Haruna after rain
 
-The route is a fictional Gunma mountain pass at daybreak. The sun sits low over a clearing valley. Cedar canopy, road cuts and the open switchbacks each receive different light. The title uses a separate automotive illustration. All driving footage comes from the playable Three.js scene.
+The route is a fictional Gunma mountain pass. The downhill delivery begins at daybreak with the sun low over the valley. On the return climb, a cool moon silhouettes the cedar canopy. The headlights and roadside lamps pick out wet asphalt, guardrails and lane markings. The dawn title uses an automotive illustration. The night title is an in-engine photograph of the playable GR86 parked outside Fujiwara Tofu. [Night title image](dist/assets/art/haruna-night.webp)
 
 ## Scanned surfaces
 

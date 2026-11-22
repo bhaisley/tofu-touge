@@ -3,7 +3,7 @@
 
   const linearFields = [
     'x', 'z', 'speed', 'yaw', 'wheel', 'steerAngle', 'wheelAngle', 'rearWheelAngle',
-    'brake', 'slip', 'tireScrub', 'longitudinalG', 'lateralG'
+    'brake', 'slip', 'tireScrub', 'rearSlipAngle', 'wheelspin', 'rearLock', 'longitudinalG', 'lateralG'
   ];
   const mix = (a, b, t) => a + (b - a) * t;
   const mixDirection = (a, b, t) =>
@@ -19,7 +19,7 @@
     // Capture the last fixed-step boundary, before the simulation advances.
     capture(drive) {
       const p = this.previous;
-      for (const key of linearFields) p[key] = drive[key];
+      for (const key of linearFields) p[key] = drive[key] ?? 0;
       p.heading = drive.heading;
       p.travel = drive.travel;
       p.s = drive.contact.s;
@@ -32,7 +32,7 @@
 
       const t = Math.max(0, Math.min(1, fraction));
       const frame = this.frame;
-      for (const key of linearFields) frame[key] = mix(p[key], drive[key], t);
+      for (const key of linearFields) frame[key] = mix(p[key], drive[key] ?? 0, t);
       frame.heading = mixDirection(p.heading, drive.heading, t);
       frame.travel = mixDirection(p.travel, drive.travel, t);
       frame.kmh = Math.abs(frame.speed) * 3.6;

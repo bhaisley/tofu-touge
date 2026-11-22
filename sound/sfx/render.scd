@@ -8,7 +8,7 @@
 var output = "TOFU_SFX_RAW".getenv;
 var options = ServerOptions.new.numOutputBusChannels_(1).numInputBusChannels_(0).sampleRate_(32000);
 var recipes, render;
-var engine, tires, air, shifter, lift, contact, bell;
+var engine, tires, air, shifter, lift, compressor, valve, afterfire, contact, bell;
 var localServer = Platform.resourceDir +/+ "scsynth";
 
 if(File.exists(localServer)) { Score.program = localServer.quote };
@@ -143,6 +143,7 @@ engine = SynthDef(\tofuEngine, { |firing=120, load=0.7, part=0, seed=23|
 
 tires = SynthDef(\tofuTires, { |part=0, seed=64|
     var sand, shake, chatter, strain, grain, low, tearing, voiceA, voiceB, squeal;
+    var adhesion, tread, front, locked;
     RandSeed.ir(1, seed);
     sand = PinkNoise.ar + (WhiteNoise.ar * 0.16);
     shake = LFNoise2.ar(3.4) * 0.065 + (LFNoise2.ar(14) * 0.018);
@@ -156,10 +157,55 @@ tires = SynthDef(\tofuTires, { |part=0, seed=64|
     voiceA = SinOsc.ar(1035 * strain, SinOsc.ar(68 + (shake * 45), 0, 0.49) + (sand * 0.28));
     voiceB = SinOsc.ar(1580 * (1 + (LFNoise2.ar(4.8) * 0.053) + (shake * 0.54)),
         SinOsc.ar(31, 0, 0.58));
-    squeal = (voiceA * (0.48 + (LFNoise2.ar(6) * 0.12)))
-        + (voiceB * (0.28 + (LFNoise2.ar(8.3) * 0.13)))
-        + (SinOsc.ar(2220 * strain, voiceA * 0.39) * 0.089) + (tearing * 0.61);
-    Out.ar(0, HPF.ar(Select.ar(part, [tearing * chatter, squeal * chatter]).softclip, 210));
+    adhesion = LFNoise2.ar(3.8).range(0.25, 0.94);
+    tread = (BPF.ar(sand, 2330 * strain, 0.38) * 0.47) + (BPF.ar(grain, 2940, 0.61) * 0.23);
+    squeal = (voiceA * (0.37 + (adhesion * 0.19)))
+        + (voiceB * (0.18 + ((1 - adhesion) * 0.23)))
+        + (SinOsc.ar(2220 * strain, voiceA * 0.39) * 0.079) + (tearing * 0.86) + tread;
+    // The loaded outside front develops a thin high chirr before the rear
+    // locks. A stationary tread dragged across asphalt is lower and broader.
+    front = (BPF.ar(sand, 1630 * strain, 0.38) * 0.94) + (tread * 0.90)
+        + (SinOsc.ar(1410 * strain, SinOsc.ar(97, 0, 0.65)) * (0.17 + (adhesion * 0.12)))
+        + (SinOsc.ar(2359 * (1 + (shake * 0.70)), sand * 0.48) * 0.12);
+    locked = (tearing * 1.7) + (BPF.ar(sand, 736 * strain, 0.26) * 1.5)
+        + (LFTri.ar(698 * strain, 0, 0.22) * chatter) + (BPF.ar(grain, 1150, 0.53) * 1.3);
+    Out.ar(0, HPF.ar(Select.ar(part, [tearing * chatter, squeal * chatter, front * chatter,
+        locked * LFNoise2.ar(23).range(0.57, 1)]).softclip, 205));
+});
+
+compressor = SynthDef(\tofuCompressor, {
+    var turbulence, wander, blade, air;
+    RandSeed.ir(1, 106);
+    turbulence = PinkNoise.ar + (WhiteNoise.ar * 0.27);
+    wander = 1 + (LFNoise2.ar(14) * 0.0031) + (LFNoise2.ar(2.6) * 0.0055);
+    blade = (SinOsc.ar(1885 * wander, SinOsc.ar(149, 0, 0.14)) * 0.165)
+        + (SinOsc.ar(3757 * wander, 0, 0.027));
+    air = BPF.ar(turbulence, 2520 * wander, 0.59) + (BPF.ar(turbulence, 4870, 0.78) * 0.37);
+    Out.ar(0, HPF.ar(air + (blade * LFNoise2.ar(8).range(0.76, 1.0)), 580));
+});
+
+valve = SynthDef(\tofuBypassValve, {
+    var pressure, throat, noise, hiss, ring, flutter;
+    RandSeed.ir(1, 129);
+    pressure = EnvGen.ar(Env([0, 1, 0.58, 0.18, 0], [0.005, 0.061, 0.125, 0.19], [1, -2, -1.5, -4]));
+    throat = XLine.ar(3360, 920, 0.31) * (1 + (LFNoise2.ar(34) * 0.031));
+    noise = WhiteNoise.ar * 0.50 + PinkNoise.ar;
+    flutter = 0.83 + (SinOsc.ar(XLine.ar(30, 14, 0.23)) * 0.17);
+    hiss = BPF.ar(noise, throat, 0.62) * 1.6 + BPF.ar(noise, throat * 1.65, 0.84);
+    ring = SinOsc.ar(throat * 0.62, noise * 0.15) * pressure.squared * 0.09;
+    Out.ar(0, HPF.ar(((hiss * flutter) + ring) * pressure, 460));
+});
+
+afterfire = SynthDef(\tofuTailpipePop, {
+    var edge, gas, body, shell, outlet;
+    RandSeed.ir(1, 148);
+    edge = Impulse.ar(0);
+    gas = EnvGen.ar(Env.perc(0.0003, 0.054, 1, -5.5)) *
+        (BPF.ar(PinkNoise.ar, XLine.ar(1980, 660, 0.05), 1.35) * 2.3 + (WhiteNoise.ar * 0.30));
+    body = SinOsc.ar(XLine.ar(164, 65, 0.058)) * EnvGen.ar(Env.perc(0.0009, 0.112, 1, -5));
+    shell = Ringz.ar(edge, 262, 0.041) * 0.31 + (Ringz.ar(edge, 471, 0.020) * 0.17);
+    outlet = (gas * 0.91) + (body * 0.69) + shell;
+    Out.ar(0, HPF.ar((outlet - (LPF.ar(DelayC.ar(outlet, 0.025, 0.0112), 1520) * 0.37)).softclip, 46));
 });
 
 lift = SynthDef(\tofuLift, {
@@ -239,6 +285,11 @@ recipes = [
     ["engine-intake", 4.65, engine, [[0, [\firing, 180, \load, 1, \part, 2, \seed, 37]]]],
     ["tire-scrub", 3.70, tires, [[0, [\part, 0, \seed, 64]]]],
     ["tire-squeal", 3.70, tires, [[0, [\part, 1, \seed, 75]]]],
+    ["tire-front", 3.70, tires, [[0, [\part, 2, \seed, 76]]]],
+    ["tire-lock", 3.70, tires, [[0, [\part, 3, \seed, 77]]]],
+    ["turbo-spool", 3.82, compressor, [[0, []]]],
+    ["blowoff", 0.44, valve, [[0, []]]],
+    ["afterfire", 0.23, afterfire, [[0, []]]],
     ["road-air", 3.36, air, [[0, []]]],
     ["overrun", 0.27, lift, [[0, []]]],
     ["shift", 0.18, shifter, [[0, []]]],
@@ -253,6 +304,10 @@ if("TOFU_SFX_ENGINE_ONLY".getenv == "1") {
     recipes = recipes.select { |entry|
         (entry[0].beginsWith("engine-")) or: { (entry[0] == "shift") or: { entry[0] == "overrun" } }
     };
+};
+if("TOFU_SFX_TURBO_TIRES".getenv == "1") {
+    recipes = recipes.select { |entry| entry[0].beginsWith("tire-") or: {
+        ["turbo-spool", "blowoff", "afterfire"].includesEqual(entry[0]) } };
 };
 
 render = { |index|

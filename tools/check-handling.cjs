@@ -228,6 +228,16 @@ function barrierBench(course) {
 
 if (require.main === module) {
   const course = new TougeCourse();
+  const uphill = course.reversed();
+  assert.equal(uphill.reversed(), course);
+  assert.equal(uphill.night, true);
+  for (let i = 0; i <= 60; i++) {
+    const s = course.start + course.distance * i / 60;
+    const a = course.sample(s), b = uphill.sample(course.length - s);
+    assert(Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) < 0.001);
+    assert(a.fx*b.fx + a.fz*b.fz < -0.9999);
+    assert(Math.abs(a.grade + b.grade) < 0.00001 && Math.abs(a.bank + b.bank) < 0.00001);
+  }
   console.log(JSON.stringify({
     wetStraight: straightBench(),
     fullLockTrailBrake: stabilityBench(),
@@ -235,6 +245,7 @@ if (require.main === module) {
     analogHairpin: hairpinBench(course, false),
     keyboardHairpin: hairpinBench(course, true),
     route: fullRoute(course),
+    nightAscent: fullRoute(uphill),
     barrier: barrierBench(course),
   }, null, 2));
 }
