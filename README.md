@@ -42,6 +42,8 @@ Open the browser edition or download **Tofu-Touge.html** and open it in a browse
 
 Select **View Car** on the title screen to inspect the playable GR86. Drag or use the arrow keys to orbit, and scroll, pinch, or press + / − to zoom. The right stick rotates the view on a standard gamepad. **Back** or Escape returns to the menu. [Compare the rear and paint in game](playtest/gr86-rear-and-paint.jpg) · [Rear glass close-up](playtest/neo86-rear-glass.jpg) · [Walkaround photographs](playtest/neo86-walkaround.jpg)
 
+While driving in **Chase** or **Low Chase**, hold the left mouse button and drag to look around the car. Drag sideways for a full orbit and vertically to change the viewing angle. Release the button to ease back behind the car. You can keep steering, accelerating and drifting throughout.
+
 Open **Radio** to audition any track and select the music for your run. The five songs play in sequence. Press **N** or **D-pad right** to skip while driving. Opening the radio mid-run pauses the car and keeps the music playing. **Radio** and **Pause** both have separate **Sound effects** and **Music** sliders. The game remembers your levels, selected course and song between visits.
 
 Watch the GR86 drift through a Haruna hairpin with **Kōri no Hibana** on the radio. The seven-second chase-camera recording includes the engine, tire screech and music as mixed by the game. [Watch the hairpin](playtest/haruna-hairpin.mp4) · [Hear the engine in isolation](playtest/ae86-engine-run.m4a)
@@ -80,6 +82,8 @@ The soundtrack was composed and rendered locally with YuE2. The radio crossfades
 
 Twenty SuperCollider sounds cover the engine, turbo, tires, road noise, and event cues. Pressure builds with sustained throttle and engine speed, up to 0.35 bar. Lifting or upshifting under boost vents the blow-off valve. A hot exhaust can pop on the throttle cut, with a brief flame at each outlet. Front-tire scrub, rear breakaway and handbrake lock have separate voices. The editable synthesis code is in `sound/sfx/`. [Artwork and material credits](art-direction.md)
 
+The turbo whistle rises as boost builds, then settles under the engine at sustained throttle. Hear the same bonnet-view acceleration twice at matched engine and master levels. The original mix plays first and the revised mix begins at 8.6 seconds. [Hear the comparison](https://bhaisley.github.io/tofu-touge/playtest/turbo-bonnet-comparison.m4a)
+
 The engine uses original synthesized exhaust recordings at 960, 2,400, 3,600 and 6,600 RPM, with separate intake and closed-throttle sounds. All six follow the same four-cylinder firing cycle through shifts. The exterior exhaust was tuned against the parked and departing car in noplansco’s mountain run. The onboard section informed the fuller low mids in bonnet view. Passing a stone retaining wall adds one short reflection on that side of the road. [Parked and pulling away at 0:43](https://www.youtube.com/watch?v=sBC2tZZuXr0&t=43s) · [Onboard at 1:22](https://www.youtube.com/watch?v=sBC2tZZuXr0&t=82s) · [Exterior pass at 1:30](https://www.youtube.com/watch?v=sBC2tZZuXr0&t=90s)
 
 ## Handling and chase cameras
@@ -87,6 +91,8 @@ The engine uses original synthesized exhaust recordings at 960, 2,400, 3,600 and
 The chassis runs at 120 Hz. The front and rear tires share their available grip between cornering and longitudinal force. Braking shifts load forward, power goes to the rear axle, and a short rear lock can initiate a drift. Both rear contact patches lay rubber in proportion to slip. Hot tires leave a smoke plume on drier asphalt and throw more spray across standing water. The cameras, wheels and tire trails share an interpolated pose.
 
 Run `node tools/check-handling.cjs` to reproduce braking, throttle oversteer, a keyboard and an analog hairpin, a complete delivery, and a glancing barrier hit. Run `node tools/check-presentation.cjs` to check motion between physics ticks across several display rates and a recovery. Run `node sound/sfx/check-mix.cjs` to check tire levels, engine response, the camera perspectives and wall reflections.
+
+Run `node tools/check-chase-orbit.cjs` to check mouse capture, release and camera clearance during a slide in either direction of the pass.
 
 With Playwright and Chromium installed, `node tools/check-radio.cjs` exercises the offline song picker, measures audible output from all five tracks, and checks crossfades, rapid skips, pause and resume, and the saved selection. `node tools/check-touch.cjs` drives both stages and checks phone layouts, simultaneous touches, legacy records and the independent volume controls. Set `CHROME_BIN` to use an existing Chromium installation.
 

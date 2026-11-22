@@ -363,11 +363,16 @@
       const intake = smooth(1460, 3070, rpm) *
         ((0.17 + 0.28 * onCam) * load ** 1.55 + 0.30 * tipIn);
       this.setLayer("engine-intake", rpm / engineRpm["engine-intake"], intake * shiftPower * inletLevel, now, 0.016);
+      // The filling inlet is easier to hear than the wheel at settled
+      // pressure. At steady boost engine airflow still changes with RPM.
+      const filling = smooth(.016, .19, boost - this.compressorSpeed);
       this.compressorSpeed += (boost - this.compressorSpeed) *
-        (1 - Math.exp(-dt * (boost > this.compressorSpeed ? 12 : 5.8)));
+        (1 - Math.exp(-dt * (boost > this.compressorSpeed ? 7.6 : 5.8)));
       const spool = this.compressorSpeed;
-      this.setLayer("turbo-spool", .47 + 1.10 * Math.sqrt(spool) + .16 * onCam,
-        .47 * smooth(.035, .86, spool) * (.39 + .61 * Math.sqrt(load)) * inletLevel, now, .040);
+      const turboPerspective = bonnet ? 1.16 : cameraMode === 1 ? .92 : 1;
+      this.setLayer("turbo-spool", .52 + .69 * Math.sqrt(spool) + .18 * smooth(1650, 7200, rpm),
+        (.255 + .185 * filling) * smooth(.060, .90, spool) * (.18 + .82 * Math.sqrt(load)) * turboPerspective,
+        now, .038);
       this.ramp(this.engineFilter.frequency, (bonnet ? 0.60 : 1) *
         (1850 + 4130 * Math.sqrt(load) + rpm * 0.24), 0.045, now);
       this.ramp(this.intakeFilter.frequency, (bonnet ? 0.60 : 0.94) *

@@ -3,6 +3,7 @@
     python3 sound/sfx/render.py
     python3 sound/sfx/render.py --engine-only
     python3 sound/sfx/render.py --turbo-tires
+    python3 sound/sfx/render.py --only turbo-spool
 
 Requires Python 3 and SuperCollider. Set SCLANG to a custom sclang executable
 if it is outside PATH and the standard macOS application directory.
@@ -142,11 +143,12 @@ def main():
     bank = parser.add_mutually_exclusive_group()
     bank.add_argument("--engine-only", action="store_true", help="Render the engine, lift and shifter")
     bank.add_argument("--turbo-tires", action="store_true", help="Render the turbo, tailpipe pops and tire voices")
+    bank.add_argument("--only", choices=[*LOOPS, *CUES], help="Render a single named effect")
     args = parser.parse_args()
     sclang = os.environ.get("SCLANG") or shutil.which("sclang") or "/Applications/SuperCollider.app/Contents/MacOS/sclang"
     with tempfile.TemporaryDirectory(prefix="tofu-touge-sfx-") as temp:
         env = dict(os.environ, TOFU_SFX_RAW=temp, TOFU_SFX_ENGINE_ONLY="1" if args.engine_only else "0",
-                   TOFU_SFX_TURBO_TIRES="1" if args.turbo_tires else "0")
+                   TOFU_SFX_TURBO_TIRES="1" if args.turbo_tires else "0", TOFU_SFX_ONLY=args.only or "")
         if sys.platform.startswith("linux"):
             env.setdefault("QT_QPA_PLATFORM", "offscreen")
         subprocess.run([sclang, "-D", str(HERE / "render.scd")], env=env, check=True, timeout=75)
@@ -155,6 +157,8 @@ def main():
             names = [*FIRING, "overrun", "shift"]
         elif args.turbo_tires:
             names = [name for name in names if name.startswith("tire-") or name in ("turbo-spool", "blowoff", "afterfire")]
+        elif args.only:
+            names = [args.only]
         DEST.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix=".master-", dir=DEST) as staged:
             for name in names:

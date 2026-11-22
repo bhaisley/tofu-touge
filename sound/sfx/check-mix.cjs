@@ -29,23 +29,30 @@ for (const file of fs.readdirSync(path.join(dist, 'assets/sfx'))) {
 }
 
 const base = { rpm: 4700, speed: 58, gear: 2, throttle: 0.7, engineLoad: 0.7 };
-function drive(telemetry) {
+function drive(telemetry, frames = 32) {
   const frame = { ...base, ...telemetry };
-  for (let i = 0; i < 32; i++) {
+  for (let i = 0; i < frames; i++) {
     mixer.context.currentTime += 1 / 60;
     mixer.update(frame);
   }
 }
 
-function pcmRms(name) {
+function pcmSamples(name) {
   const bytes = fs.readFileSync(path.join(dist, 'assets/sfx', name + '.wav'));
   assert.equal(bytes.toString('ascii', 8, 12), 'WAVE');
   const data = bytes.indexOf('data', 12);
   assert(data >= 12);
   const length = bytes.readUInt32LE(data + 4) / 2;
+  const pcm = new Float32Array(length);
+  for (let i = 0; i < length; i++) pcm[i] = bytes.readInt16LE(data + 8 + 2 * i) / 32768;
+  return pcm;
+}
+
+function pcmRms(name) {
+  const pcm = pcmSamples(name);
   let energy = 0;
-  for (let i = 0; i < length; i++) energy += (bytes.readInt16LE(data + 8 + 2 * i) / 32768) ** 2;
-  return Math.sqrt(energy / length);
+  for (const x of pcm) energy += x * x;
+  return Math.sqrt(energy / pcm.length);
 }
 
 const gain = name => mixer.loops.get(name).gain.gain.value;
@@ -103,11 +110,33 @@ drive({frontSlipAngle:.013,rearSlipAngle:.29,rearLock:1,slip:.64,tireScrub:.83,h
 assert(gain('tire-lock')>.45 && gain('tire-front')===0, 'a locked rear contact patch adds dragged rubber');
 drive({rpm:6400,boost:0,throttle:1,engineLoad:1});
 assert.equal(gain('turbo-spool'),0,'RPM alone cannot make the compressor whistle');
-drive({rpm:6400,boost:.94,throttle:1,engineLoad:1});
+const fullBoost={rpm:6400,boost:.94,throttle:1,engineLoad:1};
+drive(fullBoost,13);
+const riseGain=gain('turbo-spool');
+drive(fullBoost,48);
+const heldGain=gain('turbo-spool');
 const chargedPitch=mixer.loops.get('turbo-spool').source.playbackRate.value;
-assert(gain('turbo-spool')>.40 && chargedPitch>1.45);
+assert(riseGain>1.23*heldGain && chargedPitch>1.22 && chargedPitch<1.43,'the audible spool swell should settle under load');
+const relativeLevel=pcmRms('turbo-spool')*heldGain/(pcmRms('engine-high')*gain('engine-high'));
+assert(relativeLevel>.15 && relativeLevel<.37,'the direct engine bank should lead the steady compressor');
+drive({...fullBoost,cameraMode:2});
+assert(gain('turbo-spool')>heldGain && gain('turbo-spool')<1.25*heldGain,'bonnet proximity must retain the engine foreground');
+drive({rpm:4500,boost:.33,throttle:.53,engineLoad:.53},66);
+assert(gain('turbo-spool')>.014 && gain('turbo-spool')<.08,'part throttle should have a light inlet sound');
 drive({rpm:5600,boost:0,throttle:0,engineLoad:0});
-assert(gain('turbo-spool')<.01 && mixer.loops.get('turbo-spool').source.playbackRate.value<chargedPitch*.65);
+assert(gain('turbo-spool')<.01 && mixer.loops.get('turbo-spool').source.playbackRate.value<chargedPitch*.7);
+
+// A near-steady motor tone stays correlated over many blade cycles. The
+// authored inlet should mostly decorrelate within 2.5–5 ms at its anchor rate.
+const wheelSound=pcmSamples('turbo-spool');
+let tonalEnergy=0,peakCorrelation=0;
+for(let i=160;i<wheelSound.length;i+=8)tonalEnergy+=wheelSound[i]**2;
+for(let lag=80;lag<=160;lag++){
+  let correlation=0;
+  for(let i=160;i<wheelSound.length;i+=8)correlation+=wheelSound[i]*wheelSound[i-lag];
+  peakCorrelation=Math.max(peakCorrelation,Math.abs(correlation)/tonalEnergy);
+}
+assert(peakCorrelation<.28,'airflow should dominate the sustained periodic tone');
 
 const prefs=new TougeAudio();
 prefs.setSoundVolume(.29);prefs.setMusicVolume(.73);prefs.setEnabled(false);

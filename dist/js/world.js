@@ -433,7 +433,7 @@
       const station=this.course.physicalStation(contact.s);
       const wall=this.walls.find(w=>station>=w.start && station<=w.end);
       if(!wall)return null;
-      const facing=this.cameraMode===2?heading:this.viewHeading,side=wall.side*this.course.direction;
+      const facing=this.cameraMode===2?heading:this.orbitHeading??this.viewHeading,side=wall.side*this.course.direction;
       return {
         side:side*Math.cos(facing-contact.heading),
         distance:Math.abs(side*wall.offset-contact.offset),
@@ -477,6 +477,7 @@
       const sideView=Math.abs(Math.sin(c.heading-this.viewHeading));
       const framing=portrait*((low?1.85:1.15)+2.95*sideView);
       const arm=(low?4.75:5.95)+Math.min(44,speed)*.024+framing;
+      this.chaseArm=arm;
       // Keep translation locked to the interpolated car. Only the boom's
       // azimuth, elevation and lens ease; uneven frames cannot move the car
       // toward/away from an independently filtered world-space camera.
@@ -518,7 +519,79 @@
       this.rig.localToWorld(this.look.set(0,.61,-.025));
       this.camera.position.copy(this.targetPos);
     }
-    render(dt,c,simulate,walkaround=null){
+    positionMouseOrbit(c,orbit){
+      const p=c.contact,eye=this.camera.position,low=this.cameraMode===1;
+      const baseX=eye.x-c.x,baseZ=eye.z-c.z,baseFlat=Math.hypot(baseX,baseZ);
+      const xUnit=baseX/baseFlat,zUnit=baseZ/baseFlat;
+      // Focus on the existing chase sightline at the car's distance. A small
+      // drag therefore departs from exactly the composition the driver saw.
+      const through=(eye.x-this.look.x)*xUnit+(eye.z-this.look.z)*zUnit;
+      const focus=baseFlat/through,weight=smooth(0,1,Math.max(Math.abs(orbit.yaw)/.48,Math.abs(orbit.pitch)/.27));
+      this.look.lerp(eye,1-focus);
+      const hub=.70,cy=this.rig.position.y+hub;
+      this.look.set(mix(this.look.x,c.x,weight),mix(this.look.y,cy,weight),mix(this.look.z,c.z,weight));
+
+      const behind=Math.atan2(-xUnit,zUnit);
+      const azimuth=behind+orbit.yaw;
+      const dx=-Math.sin(azimuth),dz=Math.cos(azimuth);
+      const height=eye.y-this.roadHeight(eye.x,eye.z,p.i)-hub;
+      const elevation=clamp(Math.atan2(height,baseFlat)+orbit.pitch,-.16,1.19);
+      const side=Math.abs(dx*Math.cos(c.heading)+dz*Math.sin(c.heading));
+      const front=Math.sqrt(Math.max(0,1-side*side)),aspect=this.camera.aspect;
+      const halfFov=Math.min(aspect*Math.tan(47*Math.PI/180),
+        Math.max(aspect*Math.tan((low?30:29.5)*Math.PI/180),Math.tan((low?25:23)*Math.PI/180)));
+      const tangent=Math.min(halfFov,halfFov/aspect);
+      const roofClear=2.49*Math.hypot(1,1/(tangent*.93));
+      const fit=Math.min(roofClear,(2.18*front+1.02*side)+(2.18*side+1.02*front)/(.83*halfFov));
+      const baseDistance=Math.hypot(baseFlat,height);
+      const radius=mix(baseDistance,Math.max(Math.hypot(this.chaseArm,height),fit+.28),weight);
+      const desiredFlat=radius*Math.cos(elevation);
+
+      // Slide the camera along the inside of the rail. A head-on view can
+      // keep its full reach on a bend even if its lateral clearance runs out.
+      const limit=this.course.half+.34;
+      eye.set(c.x+dx*desiredFlat,0,c.z+dz*desiredFlat);
+      let at=this.course.nearest(eye.x,eye.z,p.i);
+      if(Math.abs(at.offset)>limit-.9){
+        // A sharp bend's pavement is triangulated. Solve for its smoothly
+        // interpolated normal so the eye does not hop between adjacent chords.
+        for(let i=0;i<2;i++){
+          const along=(eye.x-at.x)*at.fx+(eye.z-at.z)*at.fz;
+          at=this.course.sample(at.s+along/Math.max(.45,1-at.curvature*at.offset));
+          at.offset=(eye.x-at.x)*at.rx+(eye.z-at.z)*at.rz;
+        }
+      }
+      const intoEdge=Math.max(0,Math.abs(at.offset)-limit+.9);
+      const softened=intoEdge?Math.sign(at.offset)*(limit-.9*Math.exp(-intoEdge/.9)):at.offset;
+      const excess=at.offset-mix(clamp(at.offset,-limit,limit),softened,weight);
+      eye.x-=at.rx*excess;eye.z-=at.rz*excess;
+      if(Math.abs(excess)>.01){
+        const edge=this.course.nearest(eye.x,eye.z,p.i),residual=edge.offset-clamp(edge.offset,-limit,limit);
+        eye.x-=edge.rx*residual;eye.z-=edge.rz*residual;
+      }
+      const ground=this.roadHeight(eye.x,eye.z,p.i);
+      eye.y=Math.max(ground+(low?.98:1.38),ground+hub+radius*Math.sin(elevation));
+      if(intoEdge){
+        // Follow the car's framing sphere over the roof. Join it along its
+        // tangent to ease the boom up before it runs out of room at the rail.
+        const ratio=Math.hypot(eye.x-c.x,eye.z-c.z)/roofClear;
+        const lift=roofClear*(ratio<.8?Math.sqrt(1-ratio*ratio):.6-(ratio-.8)*4/3);
+        eye.y=mix(eye.y,Math.max(eye.y,cy+lift),weight*smooth(0,.9,intoEdge));
+      }
+      // Near an outside rail the sightline can become vertical. Keep screen
+      // up towards the requested azimuth as the camera passes over the roof.
+      const sight=this.targetPos.subVectors(this.look,eye).normalize(),flatSight=Math.hypot(sight.x,sight.z);
+      const overhead=clamp(-sight.y/.97,0,1)**1.18,up=this.camera.up;
+      if(flatSight<.0001)up.set(-dx,0,-dz);
+      else if(overhead){
+        const rightX=-sight.z/flatSight,rightZ=sight.x/flatSight;
+        up.set(-sight.y*rightZ,flatSight,sight.y*rightX);
+        const roll=Math.atan2(-dx*rightX-dz*rightZ,-dx*up.x-dz*up.z);
+        up.applyAxisAngle(sight,roll*overhead);
+      }
+      this.orbitHeading=Math.atan2(-dx,dz);
+    }
+    render(dt,c,simulate,walkaround=null,orbit=null){
       this.elapsed+=dt;
       this.car.setDisplayMode(!!walkaround);
       const placed=c.placementId!==this.placementId,cut=!this.cameraReady||placed||!!walkaround;
@@ -537,6 +610,7 @@
       const speed=Math.abs(c.speed);
       this.viewSpeed=cut?speed:mix(this.viewSpeed,speed,1-Math.exp(-dt*3.9));
       const bonnet=!walkaround && this.cameraMode===2;
+      this.camera.up.set(0,1,0);this.orbitHeading=null;
       if(walkaround)this.positionWalkaround(walkaround);
       else if(bonnet){
         // Place the lens just forward of the windshield in the sprung frame.
@@ -544,7 +618,10 @@
         this.car.body.localToWorld(this.targetPos.set(.15,1.085,-.83));
         this.car.body.localToWorld(this.look.set(.15,.545,-30));
         this.camera.position.copy(this.targetPos);
-      }else this.positionChase(dt,c,cut);
+      }else{
+        this.positionChase(dt,c,cut);
+        if(simulate && orbit)this.positionMouseOrbit(c,orbit);
+      }
       this.cameraReady=true;
       this.camera.lookAt(this.look);
       this.shake=Math.max(0,this.shake-dt*2.8);

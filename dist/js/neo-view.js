@@ -1,5 +1,52 @@
 (() => {
   'use strict';
+  class ChaseOrbit {
+    constructor(canvas,active) {
+      this.canvas=canvas;this.pointer=null;this.yaw=0;this.pitch=0;this.returnTime=0;
+      canvas.addEventListener('pointerdown',e=>{
+        if(!active() || e.pointerType!=='mouse' || e.button!==0 || e.ctrlKey || this.pointer!==null)return;
+        e.preventDefault();canvas.setPointerCapture(e.pointerId);
+        this.pointer=e.pointerId;this.x=e.clientX;this.y=e.clientY;this.returnTime=0;
+        canvas.classList.add('orbiting');
+      });
+      canvas.addEventListener('pointermove',e=>{
+        if(e.pointerId!==this.pointer)return;
+        if(!active()){this.reset();return;}
+        if(!(e.buttons&1)){this.release();return;}
+        // A drag across half a desktop viewport can cover a full revolution.
+        const turn=2*Math.PI/THREE.MathUtils.clamp(canvas.clientWidth*.49,310,870);
+        const tilt=1.98/THREE.MathUtils.clamp(canvas.clientHeight,320,900);
+        const yaw=this.yaw+(e.clientX-this.x)*turn;
+        this.yaw=Math.atan2(Math.sin(yaw),Math.cos(yaw));
+        this.pitch=THREE.MathUtils.clamp(this.pitch+(e.clientY-this.y)*tilt,-.34,.98);
+        this.x=e.clientX;this.y=e.clientY;
+      });
+      for(const name of ['pointerup','pointercancel','lostpointercapture']){
+        canvas.addEventListener(name,e=>{if(e.pointerId===this.pointer)this.release();});
+      }
+    }
+    release(){
+      const id=this.pointer;this.pointer=null;
+      this.canvas.classList.remove('orbiting');
+      if(id!==null && this.canvas.hasPointerCapture(id))this.canvas.releasePointerCapture(id);
+      this.startYaw=this.yaw;this.startPitch=this.pitch;
+      this.returnTime=.37+.37*Math.max(Math.abs(this.yaw)/Math.PI,Math.abs(this.pitch));
+      this.remaining=this.returnTime;
+    }
+    reset(){
+      if(this.pointer!==null)this.release();
+      this.yaw=this.pitch=this.returnTime=0;
+    }
+    sample(dt){
+      if(this.returnTime){
+        this.remaining=Math.max(0,this.remaining-dt);
+        const t=this.remaining/this.returnTime,weight=t*t*t*(t*(t*6-15)+10);
+        this.yaw=this.startYaw*weight;this.pitch=this.startPitch*weight;
+        if(!this.remaining)this.returnTime=0;
+      }
+      return this.yaw || this.pitch ? this : null;
+    }
+  }
   class CarWalkaround {
     constructor(canvas,active) {
       this.view={yaw:.92,pitch:.135,zoom:1};
@@ -48,4 +95,5 @@
     }
   }
   window.TougeCarWalkaround=CarWalkaround;
+  window.TougeChaseOrbit=ChaseOrbit;
 })();

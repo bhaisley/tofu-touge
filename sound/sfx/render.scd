@@ -174,14 +174,18 @@ tires = SynthDef(\tofuTires, { |part=0, seed=64|
 });
 
 compressor = SynthDef(\tofuCompressor, {
-    var turbulence, wander, blade, air;
+    var turbulence, wander, blade, whistle, air;
     RandSeed.ir(1, 106);
     turbulence = PinkNoise.ar + (WhiteNoise.ar * 0.27);
-    wander = 1 + (LFNoise2.ar(14) * 0.0031) + (LFNoise2.ar(2.6) * 0.0055);
-    blade = (SinOsc.ar(1885 * wander, SinOsc.ar(149, 0, 0.14)) * 0.165)
-        + (SinOsc.ar(3757 * wander, 0, 0.027));
-    air = BPF.ar(turbulence, 2520 * wander, 0.59) + (BPF.ar(turbulence, 4870, 0.78) * 0.37);
-    Out.ar(0, HPF.ar(air + (blade * LFNoise2.ar(8).range(0.76, 1.0)), 580));
+    wander = 1 + (LFNoise2.ar(11) * 0.004) + (LFNoise2.ar(3.8) * 0.010);
+    // Turbulent flow through the inlet excites a narrow whistle. Only a
+    // little coherent blade-passing tone escapes the airbox.
+    blade = SinOsc.ar(1640 * wander, LPF.ar(WhiteNoise.ar, 90) * 0.35)
+        * LFNoise2.ar(5.6).range(0.023, 0.048);
+    whistle = BPF.ar(WhiteNoise.ar, 1730 * wander, 0.042) * 0.60;
+    air = (BPF.ar(turbulence, 1540, 0.97) * 0.88)
+        + (BPF.ar(turbulence, 2975, 0.79) * 0.40) + (BPF.ar(turbulence, 4610, 0.81) * 0.070);
+    Out.ar(0, HPF.ar(air + whistle + blade, 555));
 });
 
 valve = SynthDef(\tofuBypassValve, {
@@ -308,6 +312,9 @@ if("TOFU_SFX_ENGINE_ONLY".getenv == "1") {
 if("TOFU_SFX_TURBO_TIRES".getenv == "1") {
     recipes = recipes.select { |entry| entry[0].beginsWith("tire-") or: {
         ["turbo-spool", "blowoff", "afterfire"].includesEqual(entry[0]) } };
+};
+if(("TOFU_SFX_ONLY".getenv ? "").size > 0) {
+    recipes = recipes.select { |entry| entry[0] == "TOFU_SFX_ONLY".getenv };
 };
 
 render = { |index|

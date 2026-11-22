@@ -91,8 +91,8 @@ h1{font:italic 900 clamp(6.35rem,min(11.5vw,17.7vh),12.8rem)/.77 Race,Impact,san
 .vehicle-cell{border-block:0;border-right:0;background:transparent;text-align:left;align-items:flex-start;pointer-events:auto}
 .vehicle-cell .meta span{color:var(--orange);font-size:1.03em}
 .vehicle-cell:hover strong{color:#ffd1b9}
-body[data-state="viewcar"] #world{cursor:grab}
-body[data-state="viewcar"] #world:active{cursor:grabbing}
+body[data-state="viewcar"] #world,#world.chase-orbit{cursor:grab}
+body[data-state="viewcar"] #world:active,#world.chase-orbit.orbiting{cursor:grabbing}
 #walkaround{position:fixed;inset:auto 0 0;display:flex;align-items:end;justify-content:space-between;gap:12px;padding:64px var(--edge) max(24px,env(safe-area-inset-bottom));pointer-events:none;background:linear-gradient(transparent,#0b1218b8)}
 .car-caption h2{margin:0;font:700 clamp(1.7rem,3.5vw,3rem)/1 Cond,Arial,sans-serif}
 .car-caption small{font:600 .4em var(--mono);color:#f4b18e;vertical-align:middle}

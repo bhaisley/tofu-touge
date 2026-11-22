@@ -16,6 +16,8 @@
   const actions=new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD','Space']);
   let world=null,state='menu',dialog='',resumeTo='racing',controlParent='menu',loading=false;
   const walkaround=new TougeCarWalkaround(byId('world'),()=>state==='viewcar');
+  const canOrbit=()=>state==='racing' && !dialog && world?.cameraMode<2;
+  const chaseOrbit=new TougeChaseOrbit(byId('world'),canOrbit);
   let count=3.1,accumulator=0,prevTime=0,lastHud=0,toastTime=0,controlTab='keyboard',focusReturn=null;
   const fixed=1/120, settingsKey='tofu-touge-settings-v1';
   function read(key){
@@ -100,13 +102,14 @@
   const tacho=byId('tach'),ticks=Array.from({length:26},(_,i)=>{const el=document.createElement('i');if(i>20)el.className='hot';tacho.append(el);return el;});
   function stateTo(next){
     state=next;document.body.dataset.state=next;byId('hud').hidden=next==='menu'||next==='viewcar';
+    byId('world').classList.toggle('chase-orbit',canOrbit());
     byId('walkaround').hidden=next!=='viewcar';
     const labels={menu:'MAIN MENU',viewcar:'WALKAROUND',racing:course.night?'UPHILL RUN':'DOWNHILL RUN',countdown:'START GRID',paused:'PAUSED',result:'RUN RESULT'};
     setText('screen-label',labels[next]);
     refreshSound();
   }
   function clearInput(){
-    keys.clear();fingers.clear();handbrakeTap=false;
+    keys.clear();fingers.clear();handbrakeTap=false;chaseOrbit.reset();
     document.querySelectorAll('[data-drive].held').forEach(el=>el.classList.remove('held'));
   }
   function audioNeedsGesture() {
@@ -223,12 +226,13 @@
     if(state!=='paused')return;closeDialog(false);clearInput();unlockAudio();stateTo(resumeTo);audio.setActive(true);prevTime=0;
   }
   function camera(){
-    if(!world)return;const name=world.cycleCamera();toast(name+' camera');
+    if(!world)return;chaseOrbit.reset();const name=world.cycleCamera();toast(name+' camera');
+    byId('world').classList.toggle('chase-orbit',canOrbit());
     if(dialog==='pause')setText('camera-setting',name);
   }
   function recover(){
     if(resumeTo==='countdown'&&state==='paused'){resume();return;}
-    drive.recover();renderPose.capture(drive);accumulator=0;world.cameraReady=false;if(state==='paused')resume();
+    chaseOrbit.reset();drive.recover();renderPose.capture(drive);accumulator=0;world.cameraReady=false;if(state==='paused')resume();
   }
   function setMusic(on){
     music=on;audio.setMusicEnabled(on);settings.music=on;write(settingsKey,settings);
@@ -327,7 +331,8 @@
   const controlsData={
     keyboard:[
       ['Accelerate',['W','↑']],['Brake / reverse',['S','↓']],['Steer',['A / D','← / →']],['Handbrake',['Space']],
-      ['Change camera',['C']],['Next radio track',['N']],['Recover car (+3 s)',['R']],['Pause',['Esc','P']]
+      ['Change camera',['C']],['Look around in chase',['Left mouse + drag']],['Return to chase',['Release mouse']],
+      ['Next radio track',['N']],['Recover car (+3 s)',['R']],['Pause',['Esc','P']]
     ],
     gamepad:[
       ['Accelerate',['RT / R2']],['Brake / reverse',['LT / L2']],['Steer',['Left stick']],['Handbrake',['A / Cross']],
@@ -340,7 +345,7 @@
   };
   function controls(parent,tab){
     controlParent=parent;controlTab=tab||(matchMedia('(pointer:coarse)').matches?'touch':'keyboard');
-    const tabs=[['keyboard','Keyboard'],['gamepad','Controller'],['touch','Touch']];
+    const tabs=[['keyboard','Keys &amp; mouse'],['gamepad','Controller'],['touch','Touch']];
     const rows=controlsData[controlTab].map(([name,values])=>'<div><dt>'+name+'</dt><dd>'+values.map(v=>'<kbd>'+v+'</kbd>').join('<span class="or-key"> / </span>')+'</dd></div>').join('');
     openDialog('controls','<p class="dialog-kicker">DRIVER’S GUIDE</p><h2 id="dialog-title">Controls</h2><div class="controls-tabs" aria-label="Input device">'+tabs.map(([id,label])=>'<button id="tab-'+id+'" class="'+(controlTab===id?'selected':'')+'" aria-pressed="'+(controlTab===id)+'">'+label+'</button>').join('')+'</div><dl class="binding-list">'+rows+'</dl><p class="dialog-tip"><span class="tip-label">HAIRPIN TECHNIQUE</span>Brake before the hairpin, turn in and give the handbrake a short pull. Release it, keep some throttle and tap opposite steer to balance the slide. Ease off and straighten up to bank your points.</p><div class="dialog-buttons"><button id="controls-done" class="primary">Back</button></div>');
     for(const [id] of tabs)bind('tab-'+id,()=>{controls(parent,id);byId('tab-'+id).focus();});
@@ -564,7 +569,7 @@
     world.measureFrame(raw);
     const racing=state==='racing';
     const pose=racing?renderPose.sample(drive,accumulator/fixed):drive;
-    world.render(dt,pose,racing);
+    world.render(dt,pose,racing,null,racing?chaseOrbit.sample(dt):null);
     if(now-lastHud>48){hud();lastHud=now;}
   }
   requestAnimationFrame(frame);
