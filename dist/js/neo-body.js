@@ -99,6 +99,8 @@
       const shoulderBlade=.022*bell((y-(.666+.030*Math.sin((z+.38)*2)))/.093);
       const pinch=-.035*door*bell((y-(.565+.040*z))/.085);
       p[0]+=s*taper*(shoulderBlade+pinch);
+      // The combination lamp wraps into a shallow seat behind the rear wheel.
+      p[0]-=s*.010*smooth(1.845,1.910,z)*smooth(.626,.681,y)*(1-smooth(.820,.855,y));
       const ry=rollHeight(z);
       if(ry>.00001 && y>shoulder-ry){
         const h=clamp((y-shoulder+ry)/ry);
@@ -391,10 +393,10 @@
         const outline=[];for(let j=0;j<12;j++)outline.push(pull(end,j/12));
         b.face('paint',outline,[0,0,end?1:-1],white);
       }
-      // The rear bumper separates from the quarter below the lamp's side marker.
+      // The bumper shutline meets the short wraparound NEO combination lamp.
       const joint=[];
-      for(const [z,y] of [[1.589,.529],[1.632,.534],[1.681,.541],[1.727,.554],
-        [1.767,.574],[1.811,.605],[1.856,.643],[1.901,.678],[1.951,.711],[1.992,.731]]){
+      for(const [z,y] of [[1.589,.529],[1.642,.551],[1.695,.581],[1.750,.616],
+        [1.804,.652],[1.858,.689],[1.907,.722],[1.944,.743]]){
         joint.push(outer(s,z,y,.0012));
       }
       tube(b,'rubber',joint,.0014,0x4e5151,6);

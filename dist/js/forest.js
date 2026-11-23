@@ -377,7 +377,7 @@
     mesh.setColorAt(index, tint);
   }
 
-  function* forestMeshes(group, trees, small, grasses, startEye) {
+  function* forestMeshes(group, trees, small, grasses, startEye,fuji) {
     const eye = startEye.clone();
     const light={fill:{value:1},direction:{value:new T.Vector2(.79,-.61)}};
     const mobile = window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 760;
@@ -628,6 +628,11 @@
       light.fill.value=night?.07:1;
       if(night){light.direction.value.set(-.55,.76).normalize();farMat.color.setRGB(.064,.085,.125);}
       else{light.direction.value.set(.79,-.61);farMat.color.setHex(0xffffff);}
+      if(fuji){
+        const key=night?TougeFuji.dawnDirection:TougeFuji.sunDirection;
+        light.direction.value.set(key.x,key.z).normalize();light.fill.value=night?.35:.92;
+        farMat.color.setHex(night?0x9a9eb1:0xffe4ba);
+      }
     };
     update(startEye);
   }
@@ -888,8 +893,9 @@
 
   function* forestSteps(scene, course, groundAt, forestFloor, walls) {
     const group = new T.Group();
-    group.name = 'Haruna sugi forest';
-    const rng = randomStream(861977);
+    const fuji=course.mapId==='fuji';
+    group.name = fuji?'Mikuni woodland and susuki meadows':'Haruna sugi forest';
+    const rng = randomStream(fuji?369207:861977);
     const drawnHeight = yield* groundProjection(scene,forestFloor);
     const trees = [[], [], [], []], small = Array.from({length:8},()=>[]), shadePatches = [];
     const {minX, maxX, minZ, maxZ} = course.bounds;
@@ -900,7 +906,7 @@
 
     function chooseSpecies(p, field) {
       const value = rng(), low = p.s > course.splits[1];
-      const cedar = (low ? 0.34 : 0.53) + 0.23 * (field - 0.55);
+      const cedar = (fuji?(low?.15:.21):(low ? 0.34 : 0.53)) + 0.23 * (field - 0.55);
       if (value < cedar) return 0;
       if (value < cedar + 0.19) return 1;
       return value > (low ? 0.88 : 0.93) ? 3 : 2;
@@ -933,6 +939,13 @@
         const vista = downhill && Math.sin(p.s * 0.0104 + 0.7) > -0.30;
         const rim = clamp((margin - p.distance) / 46, 0, 1);
         let density = (0.22 + field * 0.90) * rim;
+        if(fuji){
+          const meadow=TougeFuji.meadow(p.s);
+          // Grass on both shoulders opens each straight. On the west-facing
+          // slope the clearing extends as far as the forest's distant LOD.
+          const clearing=Math.max(x<p.x+5?1:0,1-T.MathUtils.smoothstep(p.distance,60,130));
+          density*=.80*(1-.995*meadow*clearing);
+        }
         if (vista && p.distance < 82) density *= 0.12 + 0.47 * p.distance / 82;
         if (p.s >= course.splits[1] && p.distance < 68) density *= 0.65;
         if (rng() > density) continue;
@@ -999,7 +1012,7 @@
       grassCover.needsUpdate=true;
     }
     const grasses=yield* TougeGrass.scatterSteps(course,forestFloor,walls,drawnHeight,randomStream(0x4a718));
-    yield* forestMeshes(group, trees, small, grasses, course.at(course.start));
+    yield* forestMeshes(group, trees, small, grasses, course.at(course.start),fuji);
     yield* addCanopyShade(group, shadePatches, drawnHeight, groundAt);
     scene.add(group);
     return group;

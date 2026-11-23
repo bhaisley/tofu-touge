@@ -17,7 +17,8 @@
   }
   function landHeight(course) {
     const anchors=course.points.filter((p,i)=>i%15===0);
-    const plane=(x,z)=>z*0.143-x*0.21;
+    const fuji=course.mapId==='fuji';
+    const plane=fuji?(x,z)=>x*.17+z*.11:(x,z)=>z*.143-x*.21;
     const known=anchors.map(p=>({x:p.x,z:p.z,adjust:p.y-plane(p.x,p.z)}));
     return function groundAt(x,z) {
       const p=course.nearest(x,z),d=p.distance;
@@ -32,7 +33,8 @@
       const edge=course.surface(p,clamp(p.offset,-7,7));
       const local=edge-1.05-(1-smooth(6.8,12,d))*.65;
       if(d<=9)return local;
-      const far=plane(x,z)+sum/wSum+undulation*smooth(10,110,d)-14*smooth(170,440,d);
+      const valley=fuji?Math.max(0,p.x-x)*.26*smooth(12,100,d):0;
+      const far=plane(x,z)+sum/wSum+undulation*smooth(10,110,d)-14*smooth(170,440,d)-valley;
       return mix(local,far,smooth(8+turnout*15,40+turnout*15,d));
     };
   }
@@ -40,14 +42,16 @@
     const b=course.bounds,step=7,margin=260,x0=b.minX-margin,z0=b.minZ-margin;
     const nx=Math.ceil((b.maxX-b.minX+2*margin)/step),nz=Math.ceil((b.maxZ-b.minZ+2*margin)/step);
     const pos=[],colors=[],uv=[],edges=[],cover=[],idx=[],r=rng(371);
-    const a=new T.Color(0x6f796e),c=new T.Color(0xbcc1a8),stone=new T.Color(0x899794);
+    const fuji=course.mapId==='fuji';
+    const a=new T.Color(fuji?0x857b5b:0x6f796e),c=new T.Color(fuji?0xceb786:0xbcc1a8),stone=new T.Color(0x899794);
     const color=new T.Color();
     for(let j=0;j<=nz;j++)for(let i=0;i<=nx;i++){
       const x=x0+i*step,z=z0+j*step,y=groundAt(x,z);
       // Ease the outer terrain below the photographed foothills, beyond the playable road.
       const rim=1-smooth(0,125,step*Math.min(i,j,nx-i,nz-j));
       pos.push(x,y-48*rim,z);uv.push(x/3.8,z/3.8);edges.push(rim);
-      cover.push(TougeGrass.habitat(x,z));
+      const habitat=TougeGrass.habitat(x,z);
+      cover.push(fuji?.17+.80*habitat:habitat);
       const t=clamp(.46+.28*Math.sin(x*.076+z*.023+1.2*Math.sin(z*.03))+.24*Math.sin(z*.054-x*.011)+r()*.13,0,1);
       color.copy(a).lerp(c,t).lerp(stone,Math.max(0,Math.sin(x*.031-z*.027))*.44);
       colors.push(color.r,color.g,color.b);
@@ -226,7 +230,9 @@
         if(k>0&&k<11)outletIdx.push(start+2,a+2,b+2);
       }
     }
-    const spans=[[114,213],[314,405],[638,745],[857,952],[1217,1315],[1446,1505],[1620,1734],[1837,1925],[2160,2274],[2634,2742],[2894,2999]];
+    const spans=course.mapId==='fuji'
+      ?[[503,625],[1015,1123],[1860,1935],[2340,2471],[2705,2761],[3130,3214],[3540,3650],[3950,4070],[4160,4220]]
+      :[[114,213],[314,405],[638,745],[857,952],[1217,1315],[1446,1505],[1620,1734],[1837,1925],[2160,2274],[2634,2742],[2894,2999]];
     const walls=[],offset=7.5;
     for(const [start,end] of spans){
       const mid=(start+end)/2,L=course.at(mid,-23),R=course.at(mid,23);
@@ -364,7 +370,16 @@
           await pause();start=performance.now();
         }
         return world;
-      }catch(error){world.renderer?.dispose();throw error;}
+      }catch(error){world.dispose();throw error;}
+    }
+    dispose(){
+      if(!this.renderer || this.disposed)return;
+      this.disposed=true;
+      // A new mountain owns a fresh canvas. Release the old context and all
+      // its targets; a genuinely lost context on the live canvas can recover.
+      const renderer=this.renderer;
+      if(!renderer.domElement.isConnected)renderer.forceContextLoss();
+      renderer.dispose();
     }
     *build(canvas,activeCourse){
       const course=activeCourse.physicalCourse;
@@ -375,9 +390,9 @@
       this.camera=new T.PerspectiveCamera(60,1,.35,2350);this.camera.rotation.order='YXZ';
       this.cameraMode=0;this.viewHeading=0;this.look=new T.Vector3();this.targetPos=new T.Vector3();
       this.reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      this.sky=TougeLighting.makeSky(this.scene,this.renderer);
+      this.sky=TougeLighting.makeSky(this.scene,this.renderer,course);
       this.sky.userData.setNight(activeCourse.night);
-      this.sun=TougeLighting.makeSun(this.scene,innerWidth<760?1024:2048);
+      this.sun=TougeLighting.makeSun(this.scene,innerWidth<760?1024:2048,course.mapId==='fuji');
       yield;
       const groundAt=landHeight(course),forestFloor=yield* addTerrain(this.scene,course,groundAt,this.sky);
       yield;
@@ -494,10 +509,12 @@
       this.course=course;
       const night=course.night;
       this.sky.userData.setNight(night);this.sun.userData.setNight(night);
-      this.scene.background.setHex(night?0x152238:0x899da6);
-      this.scene.fog.color.setHex(night?0x192739:0x596d74);this.scene.fog.density=night?.0026:.00215;
+      const fuji=course.mapId==='fuji';
+      this.scene.background.setHex(fuji?(night?0x8897ad:0xb9c1bf):(night?0x152238:0x899da6));
+      this.scene.fog.color.setHex(fuji?(night?0x747f95:0xa3a9a0):(night?0x192739:0x596d74));
+      this.scene.fog.density=fuji?(night?.00165:.00145):(night?.0026:.00215);
       this.forest.userData.setNight(night);this.roadside.userData.setNight(night);
-      this.routeMarkings[0].visible=!night;this.routeMarkings[1].visible=night;
+      this.routeMarkings[0].visible=course.direction>0;this.routeMarkings[1].visible=course.direction<0;
       this.wetRoad.setCourse(course);this.carLighting.setNight(night);
       if(night && !this.dippedBeam)this.dippedBeam=TougeLighting.headlampPattern();
       for(const light of this.headlamps){

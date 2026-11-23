@@ -21,6 +21,7 @@ global.TougeWetRoad=class {
 // The generator yields here only after the complete forest joins the scene.
 global.addRoadside={steps:function*(){yield;}};
 require('../dist/js/course.js');
+require('../dist/js/fuji.js');
 require('../dist/js/grass.js');
 require('../dist/js/rock-cuts.js');
 require('../dist/js/forest.js');
@@ -73,10 +74,10 @@ function collect(group,course) {
     standAttributes:new Set(stands.map(mesh=>mesh.geometry.attributes.treeCell)).size};
 }
 
-for(const mobile of [false,true]) {
+for(const [mountain,mobile] of [['haruna',false],['haruna',true],['fuji',false],['fuji',true]]) {
   global.innerWidth=mobile?440:1280;
   global.matchMedia=query=>({matches:mobile && query==='(pointer: coarse)'});
-  const course=new TougeCourse(), world=Object.create(TougeWorld.prototype);
+  const course=new TougeCourse(mountain), world=Object.create(TougeWorld.prototype);
   const steps=world.build(null,course);
   while(!world.forest) assert(!steps.next().done,'World construction skipped the forest');
   steps.return();
@@ -85,5 +86,5 @@ for(const mobile of [false,true]) {
   assert(report.stands>1 && report.standAttributes===report.stands,'Each stand must retain its own tree variants');
   assert.equal(report.cards,2,'Stands must share their two portrait vertex buffers');
   assert(report.grass>=4,'The course must stream short and tall roadside grasses');
-  console.log(`${mobile?'Touch':'Desktop'} · ${report.stands} forest stands · ${report.grass} grass batches · 122 verified views`);
+  console.log(`${mountain} · ${mobile?'Touch':'Desktop'} · ${report.stands} forest stands · ${report.grass} grass batches · 122 verified views`);
 }

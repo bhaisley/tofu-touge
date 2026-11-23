@@ -1,6 +1,14 @@
-# Haruna after rain
+# Tofu Touge art direction
+
+## Haruna after rain
 
 The route is a fictional Gunma mountain pass. The downhill delivery begins at daybreak with the sun low over the valley. On the return climb, a cool moon silhouettes the cedar canopy. The two title illustrations share the look of an automotive editorial photograph. At dawn the GR86 turns into a wet hairpin. At night it pulls away from Fujiwara Tofu, with the shop lights reflecting across its rear quarter and the rain-dark pavement. [Dawn cover](dist/assets/art/haruna-dawn.webp) · [Night cover](dist/assets/art/haruna-night.webp)
+
+## Mikuni above Lake Yamanaka
+
+From the Panorama-dai roadside lookout, Mount Fuji stands west-southwest across the lake. The driving horizon uses a terrain panorama baked from one-arc-second NASA/NGA Shuttle Radar Topography Mission elevation data. Lake Yamanaka, the foreground ridges and Fuji have their own depths. The afternoon descent and predawn return have separately lit skies. The game shares asphalt, rails, trees and grasses with Haruna. [NASA/NGA SRTM 1 Arc-Second Global, distributed by USGS](https://doi.org/10.5066/F7PR7TFT) · [Yamanakako Village’s Panorama-dai overlook](https://lake-yamanakako.com/en/see-and-do/10348) · [Yamanashi’s published Mikuni profile](https://www.yamanashi-kankou.jp/zenryoku/hill-climb/hyakusaka/course/921/index.html)
+
+The photographic title images show the same white panda NEO86 in both settings. Low afternoon light illuminates the susuki on the descent. In the uphill image a pink band catches Fuji above the cooler lake and wet road. [Afternoon cover](dist/assets/art/mikuni-afternoon.webp) · [Blue-hour cover](dist/assets/art/mikuni-blue-hour.webp)
 
 ## Scanned surfaces
 
@@ -23,7 +31,7 @@ The near verge combines short, folded blades and dry thatch with sedge and silve
 
 ## GR86 rear bodywork
 
-The Tokyo Auto Salon photographs guided the conversion’s raised lamps, cast wheels, glossy overfenders and black-and-white rocker stripe. Toyota’s GR86 rear views guided the shark fin, roof shoulders, lamp shapes and bumper. The NEO86 spoiler holds its height across the center, then turns down above each taillight. The center stop lamp sits just under the lip. A polished black strip joins the outboard C-shaped lights. The plate sits in a pressed recess below the trunk. The lacquered black valance runs from both rear wheel arches around the bumper, with the same pearl accent and upper black stripe as the sides. A textured diffuser surrounds the two rolled exhaust tips. [Result Japan’s NEO86 photographs](https://result-japan.net/items/696f0367286e6359c84cba20) · [Toyota GR86 exterior photographs](https://media.toyota.co.uk/images/gr86-exterior-static-2022-current/)
+The Tokyo Auto Salon photographs guided the conversion’s raised lamps, cast wheels, glossy overfenders and black-and-white rocker stripe. Toyota’s GR86 rear views guided the shark fin, roof shoulders and glass opening. The NEO86 wing has a flat white upper blade across the trunk. Short bevels blend its ends into the quarters. A center stop lamp sits just below it. The black TOYOTA garnish and single plate mount sit high between the compact hooked lamps. The lacquered black valance runs from both rear wheel arches around the bumper, with the same pearl accent and upper black stripe as the sides. Two rolled exhaust tips exit through the black apron. [Result Japan’s NEO86 photographs](https://result-japan.net/items/696f0367286e6359c84cba20) · [Toyota GR86 exterior photographs](https://media.toyota.co.uk/images/gr86-exterior-static-2022-current/) · [Matched game views](playtest/neo86-kit-rear.jpg)
 
 The loose-glass photograph supplied the rounded corners, ceramic border and heater pattern. For the installed opening, the distance between the rear tires on a straight-rear GR86 photograph supplied a scale. The high rear-quarter photograph located the glass ends relative to the rear axle. The resulting pane measures about 1.21 m across at its widest. Its lower edge sweeps aft and appears nearly level in a straight rear view. The painted pillars widen into the quarters on either side of the trunk. A dotted inner edge follows the black ceramic border, and sixteen fine heater lines run between the side busbars. [Toyota technical dimensions](https://global.toyota/en/newsroom/toyota/36247827.html) · [Before and after in the game](playtest/neo86-rear-glass.jpg)
 
@@ -33,7 +41,7 @@ Both faces of the rear glass contribute to its reflection. The absorption increa
 
 Puddles use a local reflection camera aligned to the grade and bank of the car’s current stretch of road. Exposed aggregate, wheel paths and pooled water have different roughness. Each rear tire samples this water to determine how much spray it throws. The convex mirrors capture the road from their own positions when close enough to read. A directional sunlight shadow follows the car and the next bend, with the shadow map snapped to whole texels to keep fine shadows stable.
 
-The GR86 samples two neighboring environment captures as it moves. There are 95 capture stations about 34 metres apart. Each one supplies broad directional light as well as sharper reflections from the forest, mountains, sky and roadside geometry. The pearl panels and graphite overfenders have a smooth clearcoat over a softer base. Their reflected sky openings have enough brightness to trace the doors and rear deck under the canopy. In the walkaround, a six-sided capture at window height lets tree trunks and the horizon travel across the clearcoat and curved glass as the player orbits the car. The car is hidden during each capture.
+The GR86 samples two neighboring environment captures as it moves, spaced about 34 metres apart on each pass. Each supplies broad directional light as well as sharper reflections from the forest, mountains, sky and roadside geometry. The pearl panels and graphite overfenders have a smooth clearcoat over a softer base. Their reflected sky openings have enough brightness to trace the doors and rear deck under the canopy. In the walkaround, a six-sided capture at window height lets tree trunks and the horizon travel across the clearcoat and curved glass as the player orbits the car. The car is hidden during each capture.
 
 Short-range ambient occlusion comes from the finished car geometry. The bake traces 64 rays per sampled vertex and packs the geometry records into a lossless texture. Separate wheel, brake and body assemblies keep the fixed caliper and rotating spokes correctly shaded. The shader applies the result to indirect light. The driver’s-door lettering, registrations, GR86 badge face and small body decals share a lossless atlas so their glyphs are consistent across devices. [Occlusion bake](dist/assets/art/neo86-occlusion.webp) · [GR86 livery markings](dist/assets/art/neo86-markings.webp)
 
@@ -41,6 +49,7 @@ After changing the environment, serve the editable game, install Playwright with
 
 ```sh
 node tools/bake-reflections.cjs http://127.0.0.1:8477/
+node tools/bake-reflections.cjs http://127.0.0.1:8477/ fuji
 python3 tools/standalone.py
 ```
 
@@ -49,6 +58,54 @@ After editing the car geometry, run `node tools/bake-car-occlusion.cjs http://12
 ## ImageGen prompt record
 
 The built-in ImageGen tool produced the following source art. Each entry links to the optimized game assets.
+
+### Mikuni key art and the flat NEO86 spoiler
+
+The two original Mikuni compositions used the Haruna title photographs as visual references. All four spoiler edits used Result Japan’s white show car as the shape reference. The rear-facing edits also used the finished Three.js model. The game ships the final images as 1672 × 941 WebP files. [Haruna dawn](dist/assets/art/haruna-dawn.webp) · [Haruna night](dist/assets/art/haruna-night.webp) · [Mikuni afternoon](dist/assets/art/mikuni-afternoon.webp) · [Mikuni blue hour](dist/assets/art/mikuni-blue-hour.webp)
+
+<details>
+<summary>Original Mikuni afternoon photograph</summary>
+
+> Create a new landscape 16:9, 1672×941 or wider cinematic automotive photograph variant of the supplied Tofu Touge title art for a new course. Preserve precise photographic realism, real lenses, rendered paint and detailed physical tire and asphalt, Japanese panda-white modern Toyota GR86 coupé with Result Japan NEO86 conversion, black overfenders flush gunmetal Watanabe 8-spoke wheels, glossy black lower rear bumper and rocker, modern coupe cabin, modest low trunk spoiler. Retain tasteful Japanese tofu-shop lettering on the driver's door. Place the entire car in the lower right half, with room around all wheels, and keep the leftmost 38% quiet/darker for live menu type. Scenic Mikuni Pass viewpoint above Lake Yamanaka. In the upper middle-right, visibly recognizable, truly Japanese Mt Fuji across the broad blue lake: gently irregular flat summit crater rim, long convex-to-concave volcanic flanks and real branching snow tongues; atmospheric scale, beyond overlapping ridges, NOT Alps / pointed peak. Damp two-lane asphalt, Japanese orange centerline, metal guardrail and open Japanese silvergrass in late autumn, no infrastructure from the previous map. No title, caption, watermark, borders, UI or printed overlay. View from a low road shoulder, car's front three-quarter is visible with square illuminated pop-ups, two small amber fogs and white hood moving downhill through a sweeping curve. The lakeshore below and Mt Fuji beyond it receive low amber late-afternoon grazing light through a pale apricot and blue sky. Fine gold susuki and distant blue-indigo foothills. Real editorial motorsport exposure and sharp focus, some spray, no artificial dramatic sci-fi, maintain strong mountain recognition. Composition visually distinct from Haruna.
+
+</details>
+
+<details>
+<summary>Original Mikuni blue-hour photograph</summary>
+
+> Create a new landscape 16:9, 1672×941 or wider cinematic automotive photograph variant of the supplied Tofu Touge title art for a new course. Preserve precise photographic realism, real lenses, rendered paint and detailed physical tire and asphalt, Japanese panda-white modern Toyota GR86 coupé with Result Japan NEO86 conversion, black overfenders flush gunmetal Watanabe 8-spoke wheels, glossy black lower rear bumper and rocker, modern coupe cabin, modest low trunk spoiler. Retain tasteful Japanese tofu-shop lettering on the driver's door. Place the entire car in the lower right half, with room around all wheels, and keep the leftmost 38% quiet/darker for live menu type. Scenic Mikuni Pass viewpoint above Lake Yamanaka. In the upper middle-right, visibly recognizable, truly Japanese Mt Fuji across the broad blue lake: gently irregular flat summit crater rim, long convex-to-concave volcanic flanks and real branching snow tongues; atmospheric scale, beyond overlapping ridges, NOT Alps / pointed peak. Damp two-lane asphalt, Japanese orange centerline, metal guardrail and open Japanese silvergrass in late autumn, no infrastructure from the previous map. No title, caption, watermark, borders, UI or printed overlay. Photograph the same delivery car leaving a switchback uphill just before sunrise, from a low right rear three-quarter, its nose opens to the right. Accurate rear of the white 2026 Result Japan NEO86 exhibition conversion on modern GR86 shell: rear window shallow, broad white C-pillars, black TOYOTA wordmark garnish above a single small white Japanese road plate in the middle of the trunk, hooked rounded red tail lamps that wrap around the rear corners, separate lights with white painted trunk between, twin round exhausts, panda black lower bumper. Behind, pale cool cobalt sky with a delicate pink east-light reflection on the upper snow of the very recognizable Mt Fuji across Lake Yamanaka. A narrow band of lake and silvergrass in between; look like a real pre-dawn automotive photograph with good exposure on paint and snow, not midnight or neon. No shop behind car.
+
+</details>
+
+<details>
+<summary>Flat spoiler correction, front three-quarter views</summary>
+
+> Precise photographic restoration edit. Image 1 is the actual 16:9 title artwork to update. Image 2 is ONLY the geometry reference for Result Japan's white NEO86 rear, not a setting or composition reference. Match the precise low flat wing in image 2. Its broad upper trailing edge is a RULER-STRAIGHT line between the ends, at a single cross-car height. The top of the blade is a flat horizontal plane, sits close to the trunk. Its top silhouette must read as a straightedge even in this perspective. No arch in the center, no smile, no upturned wingtips, no horns, no GT wing or posts. Only the very last short bevel may turn down at each end. Use a shallow wedge returning to the trunk underneath, thin edge and body-color finish. Keep all other visual content of the original image 1: exact same camera, fixed framing with subject low-right, car livery and wheels, lighting, reflections on the road, each tree or building, scenery, sun/moon position, weather and grading. Localized edit, the only changes should be to the rear of the vehicle. No text or graphic overlays. Output photograph of image 1 at the same wide aspect ratio. This is a front three-quarter view: the tiny white wedge seen on the FAR RIGHT behind the side window is the spoiler to change. Remove its raised curved tip: its projecting rear lip should be a thin, straight, flat, nearly horizontal white tab just proud of the trunk line like image 2. Keep both pop-up headlights, hood, all wheels, front of car and full background exactly in place.
+
+</details>
+
+<details>
+<summary>Flat spoiler correction, rear three-quarter views</summary>
+
+> Precise photographic restoration edit. Image 1 is the actual 16:9 title artwork to update. Image 2 is ONLY the geometry reference for Result Japan's white NEO86 rear, not a setting or composition reference. Match the precise low flat wing in image 2. Its broad upper trailing edge is a RULER-STRAIGHT line between the ends, at a single cross-car height. The top of the blade is a flat horizontal plane, sits close to the trunk. Its top silhouette must read as a straightedge even in this perspective. No arch in the center, no smile, no upturned wingtips, no horns, no GT wing or posts. Only the very last short bevel may turn down at each end. Use a shallow wedge returning to the trunk underneath, thin edge and body-color finish. Keep all other visual content of the original image 1: exact same camera, fixed framing with subject low-right, car livery and wheels, lighting, reflections on the road, each tree or building, scenery, sun/moon position, weather and grading. Localized edit, the only changes should be to the rear of the vehicle. No text or graphic overlays. Output photograph of image 1 at the same wide aspect ratio. This is a rear three-quarter view: remove the existing rounded central arch/hump from the boot's lip ENTIRELY. Give it an unmistakably slab-straight top edge running edge-to-edge at the low outboard tip height, just like the crisp folded shelf in image 2. Close below it, match the show's single black trapezoid TOYOTA wordmark ABOVE the sole Japanese traffic plate in the trunk center, two separate small hook-shaped C tail lamps on either side, white bumper shelf and panda black lower valance. Headlights/tires, body position, glass, distant background untouched. Preserve the photographic realism and compact curbside proportions.
+
+</details>
+
+<details>
+<summary>Haruna night, matching the finished playable rear</summary>
+
+> Edit this widescreen night automotive photograph (first reference). Keep precisely its Haruna tofu shop, road reflections, lens, wet night exposure, parked car's position and orientation, foreground and background. The same car is parked here but needs the REAR conversion from the second image, Result Japan's real photo, and the third image's exact modeled rear geometry. Redo the white sheet-metal and two lights only on the visible boot lid, rear wing and rear plate area. Retain absolutely the ruler-straight level low top blade of the NEO86 spanning right across the trunk, as shown on the third image. The rear-facing upper spoiler edge is a straight white line with constant elevation, no arc or central bulge. It sits close to the trunk, a shallow integrated wedge with short bevels. Replace the existing Toyota oval badge with a broad black trapezoidal horizontal garnish on the upper trunk center, with off-white TOYOTA BLOCK LETTERS. DIRECTLY BELOW THAT on the SAME trunk metal mount ONE white and green Japanese Gunma license plate BETWEEN THE TAIL LAMPS. Eliminate the old second low bumper plate; the bumper should be pearl at the shoulder, black belt all the way across with narrow white strip, deep black bottom. Replace the current lamps with two compact separate hooked lamps: luminous red upper line, curves round outboard then short red return, white internal optic facets. See actual second image and model in third image for both. Keep it photographic even at close inspection. Do not transfer the studio setting or gray ambient preview of references 2,3 into the finished image. Retain the first image's wider 16:9 frame with dark negative space on left for a live menu. No overlays, signs unchanged.
+
+</details>
+
+<details>
+<summary>Mikuni blue hour, matching the same car</summary>
+
+> Finish this edit of the first wide 16:9 photograph: the NEO86 at blue hour at Mikuni Pass, identifiable pink summit of Mount Fuji, lake, guardrail, asphalt, image 1. Lock its camera, car size and position low right, negative space on left, mountain, body pose, wheels and all lighting exactly to the first image. The second photo shows the SAME white NEO86 in Haruna at night, finished correctly. Transplant ONLY the style of its rear sheetmetal, tail lights, spoiler and license plate placement onto the vehicle in image 1, lit by the ORIGINAL Mikuni blue-hour light. The third is a neutral geometry reference for the same car. This specific Result Japan kit has a wide razor-straight, flat across-the-car, level white wing closely on the trunk; no center arch, no upwards sweep at ends. Maintain the flat height of that blade in image 2 all the way across its span, short bevel below ends only. Beneath it is a black trapezoid reading TOYOTA in silver BLOCK LETTERS, and directly below is a single white and green Gunma license plate INSIDE THE TRUNK between the two lights. NO PLATE ON THE BUMPER. Separate small hook-shaped deep cherry red C-lamp lenses flank the boot. The shoulder of the bumper is pearl, then black belt, thin white stripe and gloss black lower bumper, dual round exhaust tips. Keep realistic small-scale photographic reflections, the original panda lower door lettering. Do not import the shop or its color temperature from the second image. Realistic automotive photograph, blue hour Mikuni, original 16:9 composition with room for menu on left. No overlays, no design sheet.
+
+</details>
+
+### Earlier artwork
 
 <details>
 <summary>haruna-sky.webp</summary>

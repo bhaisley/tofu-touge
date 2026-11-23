@@ -135,7 +135,8 @@
           if(canopy<.28 || random()>canopy*1.13)continue;
           const stand=noise(p.x*.047,p.z*.047);
           if(stand<.20)continue;
-          const dominant=stand>.72 ? 3 : stand>.57 ? 2 : stand>.39 ? 1 : 0;
+          const silverGrass=course.mapId==='fuji'?TougeFuji.meadow(station):0;
+          const dominant=stand>.72-.23*silverGrass ? 3 : stand>.57-.18*silverGrass ? 2 : stand>.39 ? 1 : 0;
           const near=course.nearest(p.x,p.z);
           if(Math.abs(near.s-station)>22 && near.distance<off-2)continue;
           const count=4+Math.floor(random()*(stand>.53?10:6));

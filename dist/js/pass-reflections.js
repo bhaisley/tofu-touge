@@ -116,7 +116,8 @@
       parkedProbe:{value:0},parkedCenter:{value:new T.Vector3()}
     };
     const loader = new T.TextureLoader();
-    loader.load(window.TougeArtURLs?.['haruna-reflections.webp'] || 'assets/art/haruna-reflections.webp', map => {
+    const file=course.mapId==='fuji'?'fuji-reflections.webp':'haruna-reflections.webp';
+    loader.load(window.TougeArtURLs?.[file]||'assets/art/'+file, map => {
       // The baker writes north-up octahedra in top-down atlas order.
       map.flipY = false; map.colorSpace = T.NoColorSpace;
       map.generateMipmaps = false; map.minFilter = T.LinearFilter;

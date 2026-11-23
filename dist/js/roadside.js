@@ -13,7 +13,7 @@
     return result;
   }
 
-  function makeAtlas() {
+  function makeAtlas(fuji) {
     const canvas = document.createElement("canvas");
     canvas.width = 2048; canvas.height = 1024;
     const c = canvas.getContext("2d");
@@ -57,7 +57,7 @@
       const shape = [[-.46,-.48],[.46,-.48],[.63,0],[.46,.46],[-.46,.46],[-.63,0]];
       poly(shape.map(([a,b])=>[x + a * size, y + b * size]), "#0b5a93", "#f2f3df", size * .045);
       label("県 道", x, y - size * .28, size * .17, "#fbf3db", "center");
-      label("33", x, y + size * .07, size * .64, "#f9f7e9", "center");
+      label(fuji?"730":"33", x, y + size * .07, size * (fuji?.46:.64), "#f9f7e9", "center");
     }
     function guide(jp, en, bottom) {
       return (w, h) => {
@@ -73,9 +73,9 @@
         poly([[565,181],[565,108],[539,108],[582,53],[626,108],[599,108],[599,181]], "#f6f7ee");
       };
     }
-    art("spa", 8, 8, 665, 274, guide("伊香保温泉", "Ikaho Onsen", "渋川方面   SHIBUKAWA"));
-    art("valley", 692, 8, 665, 274, guide("渋川市街", "Shibukawa", "市街方面   CITY CENTER"));
-    art("ridge", 1375, 8, 665, 274, guide("榛名峠", "Haruna Pass", "下り坂   DOWNHILL"));
+    art("spa", 8, 8, 665, 274, fuji?guide("山中湖", "Lake Yamanaka", "平野方面   HIRANO"):guide("伊香保温泉", "Ikaho Onsen", "渋川方面   SHIBUKAWA"));
+    art("valley", 692, 8, 665, 274, fuji?guide("平野", "Hirano", "湖畔方面   LAKESHORE"):guide("渋川市街", "Shibukawa", "市街方面   CITY CENTER"));
+    art("ridge", 1375, 8, 665, 274, fuji?guide("山中湖畔", "Yamanakako", "湖畔方面   LAKE ROAD"):guide("榛名峠", "Haruna Pass", "下り坂   DOWNHILL"));
     art("chevron", 8, 302, 242, 152, (w,h) => {
       c.fillStyle = "#eac653"; c.fillRect(0,0,w,h);
       c.strokeStyle = "#382e29"; c.lineWidth = 7; c.strokeRect(6,6,w-12,h-12);
@@ -122,6 +122,13 @@
       ["と","う","ふ"].forEach((v,i)=>label(v,w/2,56+105*i,80,"#403f3b","center"));
     });
     art("shop", 8, 582, 962, 185, (w,h) => {
+      if(fuji){
+        c.fillStyle="#284a45";c.fillRect(0,0,w,h);
+        c.strokeStyle="#cacbb6";c.lineWidth=3;c.strokeRect(8,8,w-16,h-16);
+        label("山中湖 パノラマ台",36,71,58,"#f5e9cb","left",850);
+        label("PANORAMA-DAI   /   LAKE YAMANAKA",40,138,30,"#d1dac7");
+        return;
+      }
       const g=c.createLinearGradient(0,0,0,h);g.addColorStop(0,"#ead9b6");g.addColorStop(.5,"#f6e7c9");g.addColorStop(1,"#c7ac83");
       c.fillStyle=g;c.fillRect(0,0,w,h);c.strokeStyle="#806449";c.lineWidth=7;c.strokeRect(4,4,w-8,h-8);
       c.fillStyle="#9b4838";c.fillRect(28,28,114,127);label("豆",86,94,78,"#f1ddb4","center");
@@ -129,6 +136,13 @@
       label("自 家 製   ・   F U J I W A R A   T O F U",176,147,25,"#595247");
     });
     art("noren", 8, 789, 520, 156, (w,h) => {
+      if(fuji){
+        c.fillStyle="#eee6d2";c.fillRect(0,0,w,h);
+        c.fillStyle="#54827a";c.fillRect(0,0,16,h);
+        label("平野",40,63,61,"#293e42");
+        label("HIRANO   /   山中湖村",42,121,27,"#46525c");
+        return;
+      }
       const symbols=["手","造","り","豆","腐"];
       for(let i=0; i<5; i++){
         c.fillStyle=i%2?"#344956":"#3b505f";c.fillRect(i*104,0,102,h-2);
@@ -138,7 +152,7 @@
     });
     art("summit",987,818,655,196,(w,h)=>{
       c.scale(w/665,h/274);
-      guide("榛名湖","Lake Haruna","峠方面   SUMMIT")(665,274);
+      (fuji?guide("三国峠","Mikuni Pass","明神山方面   MYOJIN"):guide("榛名湖","Lake Haruna","峠方面   SUMMIT"))(665,274);
     });
     const texture = new T.CanvasTexture(canvas);
     texture.colorSpace = T.SRGBColorSpace; texture.anisotropy = 8;
@@ -383,8 +397,9 @@
   }
 
   function* buildRoadside(scene, course) {
-    const group = new T.Group(); group.name = "Haruna roadside";
-    const atlas=makeAtlas(), tiles=atlas.regions;
+    const fuji=course.mapId==='fuji';
+    const group = new T.Group(); group.name = fuji?"Mikuni roadside":"Haruna roadside";
+    const atlas=makeAtlas(fuji), tiles=atlas.regions;
     yield;
     const materials={
       steel:texturedFinish("roadside-zinc.webp",.45,.68,.77,.0009),
@@ -402,7 +417,7 @@
       glow:new T.MeshBasicMaterial({map:makeGlow(),vertexColors:true,transparent:true,depthWrite:false,blending:T.AdditiveBlending,opacity:.20,side:T.DoubleSide}),
       wire:new T.LineBasicMaterial({color:0x30323b,transparent:true,opacity:.80})
     };
-    new T.TextureLoader().load(artUrl("tofu-workshop.webp"),map=>{
+    if(!fuji)new T.TextureLoader().load(artUrl("tofu-workshop.webp"),map=>{
       map.colorSpace=T.SRGBColorSpace;map.anisotropy=7;
       materials.interior.map=map;materials.interior.needsUpdate=true;
     });
@@ -538,6 +553,7 @@
     let previousPole=null, shopFeeder=null, feederDistance=Infinity;
     for(let nominal=10, i=0; nominal<course.length-2; nominal+=46+5*Math.cos(i*1.83),i++) {
       if((i&7)===0)yield;
+      if(fuji && nominal<3010)continue;
       const s=Math.abs(nominal-finish)<15 ? finish+(nominal<finish?-18:21) : nominal;
       const f=frame(course,s,8.05), b=section(s);
       const h=9.05+.28*Math.sin(i*1.65);
@@ -735,7 +751,8 @@
             const tone=tones[j===columns?2:(i*11+j*17)%19<4?1:0];
             const vertices=[previous[j-1],row[j-1],row[j],previous[j]];
             if(side===1)vertices.reverse();
-            b.concrete.face(vertices,tone,vertices.map(v=>[v.x,v.z]));
+            const uvScale=fuji?.37:1;
+            b.concrete.face(vertices,tone,vertices.map(v=>[v.x*uvScale,v.z*uvScale]));
           }
         }
         if(previous){
@@ -870,7 +887,8 @@
         f(1.10,2.42,altar),f(-1.10,2.42,altar)],0x797b6d);
       b.tile.tube(f(-1.14,2.43,altar),f(1.14,2.43,altar),.065,.065,0x838579,9,true);
     }
-    shrine(split-22);
+    if(fuji)TougeFuji.lookout(section(split-22),frame(course,split-22,-15.1,-Math.PI/2+.13),tiles);
+    else shrine(split-22);
     yield;
 
     function tofuShop(s) {
@@ -1035,7 +1053,8 @@
       }
       if(shopFeeder) wire(f(3.94,3.39,front+.03),shopFeeder,.40,s);
     }
-    tofuShop(finish+3.8);
+    if(fuji)TougeFuji.hirano(section(finish+3.8),frame(course,finish+3.8,12.0,Math.PI/2-.085),tiles);
+    else tofuShop(finish+3.8);
 
     for(const [index,b] of sections.entries()){
       if(!b) continue;
@@ -1063,12 +1082,12 @@
         lines.name="Utility lines "+index;limitRange(lines,"wire");group.add(lines);
       }
     }
-    const climb=new T.Group();climb.name="Uphill guides and illuminated shop signs";
+    const climb=new T.Group();climb.name=fuji?"Mikuni uphill guides":"Uphill guides and illuminated shop signs";
     const signMesh=climbSigns.build(materials.signs),posts=climbPosts.build(materials.farSteel);
     signMesh.castShadow=true;signMesh.receiveShadow=true;posts.castShadow=true;posts.receiveShadow=true;
     const displays=lightboxes.build(new T.MeshBasicMaterial({map:atlas.texture,color:0xffe2bb,
       vertexColors:true,polygonOffset:true,polygonOffsetFactor:-2}));
-    climb.add(signMesh,posts,displays);group.add(climb);
+    climb.add(signMesh,posts);if(displays)climb.add(displays);group.add(climb);
     // Only two pole/awning lights can contribute near the driver at once.
     const pools=Array.from({length:2},()=>{
       const spot=new T.SpotLight(0xffc997,0,27,1.08,.84,2);

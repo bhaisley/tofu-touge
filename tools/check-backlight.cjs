@@ -104,7 +104,7 @@ async function check(){
       const bumperBands=[];
       ray.far=1.8;
       for(const side of [-1,1]){
-        for(const [x,z,nx,nz] of [[.710,2.10,0,1],[.805,2.07,.7,.7],[.87,1.77,1,0],[.86,1.95,1,0]]){
+        for(const [x,z,nx,nz] of [[.16,2.10,0,1],[.710,2.10,0,1],[.805,2.07,.7,.7],[.87,1.77,1,0],[.86,1.95,1,0]]){
           const out=new THREE.Vector3(nx*side,0,nz).normalize();
           const shades=[.24,.35,.414,.468,.514].map(y=>{
             ray.ray.origin.set(side*x,y,z).add(out);ray.ray.direction.copy(out).negate();
@@ -116,14 +116,40 @@ async function check(){
           bumperBands.push({side,z,shades});
         }
       }
-      // The registration is the only decal inside the lower rear recess.
+      const panels=[...skins,localMesh('blackGlass')];
+      const garnish=[-.43,-.27,.27,.43].map(x=>{
+        ray.ray.origin.set(x,.811,2.8);ray.ray.direction.set(0,0,-1);
+        const hit=ray.intersectObjects(panels,false)[0];
+        if(!hit)throw new Error('Missing boot skin at '+x);
+        return hit.object===panels.at(-1)?'garnish':'paint';
+      });
+      const wingXs=[-.59,-.46,-.28,0,.28,.46,.59],wingStations=[1.890,1.985,2.075,2.107];
+      const paintMesh=skins[0];
+      function top(x,z){
+        ray.ray.origin.set(x,1.60,z);ray.ray.direction.set(0,-1,0);
+        const p=ray.intersectObject(paintMesh,false)[0]?.point;
+        if(!p)throw new Error('Missing spoiler surface at '+x+', '+z);
+        return p.y;
+      }
+      const wingY=wingStations.map(z=>wingXs.map(x=>top(x,z)));
+      const wingEdge=wingXs.map(x=>{
+        ray.ray.origin.set(x,wingY[0][3]-.002,2.7);ray.ray.direction.set(0,0,-1);
+        const p=ray.intersectObject(paintMesh,false)[0]?.point;
+        if(!p)throw new Error('Missing trailing edge at '+x);
+        return p.z;
+      });
+      const spread=values=>Math.max(...values)-Math.min(...values);
+      const wing={xs:wingXs,stations:wingStations,height:wingY[0][3],flatnessMm:1000*spread(wingY.flat()),
+        edgeRunoutMm:1000*spread(wingEdge),edgeZ:wingEdge[3],endHeight:[top(-.689,2.015),top(.689,2.015)]};
+      // The registration spans two triangles and shares one mount in both modes.
       // Read its two rendered triangles after the staged build has completed.
       const markPos=marks.attributes.position,plateCorners=[];
       for(let i=0;i<markPos.count;i++){
         const p=new THREE.Vector3().fromBufferAttribute(markPos,i);
-        if(p.z>1.85 && p.y<.60 && Math.abs(p.x)<.32 && !plateCorners.some(q=>q.equals(p)))plateCorners.push(p);
+        if(p.z>1.90 && p.y>.24 && p.y<.79 && Math.abs(p.x)>.161 && Math.abs(p.x)<.183 &&
+          !plateCorners.some(q=>q.equals(p)))plateCorners.push(p);
       }
-      if(plateCorners.length!==4)throw new Error('Registration quad missing from the rear recess');
+      if(plateCorners.length!==4)throw new Error('Expected one registration quad on the boot lid');
       plateCorners.sort((a,b)=>a.y-b.y || a.x-b.x);
       const [bl,br,tl,tr]=plateCorners;
       const platePoint=(u,v)=>bl.clone().lerp(br,u).lerp(tl.clone().lerp(tr,u),v);
@@ -134,6 +160,9 @@ async function check(){
       }
       const outer=vertices('brake'),center=vertices('stopLamp');
       const lamps=[outer.filter(p=>p.x<0),center,outer.filter(p=>p.x>0)];
+      const rightGuide=new THREE.Box3().setFromPoints(lamps[2]);
+      const hookInnerX=Math.min(...lamps[2].filter(p=>p.y<rightGuide.min.y+.027).map(p=>p.x));
+      const guide={inboard:rightGuide.min.x,hookInnerX,height:rightGuide.max.y-rightGuide.min.y};
       const stopBounds=new THREE.Box3().setFromPoints(center);
       d.place(1048);
       const gl=w.renderer.getContext();
@@ -184,7 +213,7 @@ async function check(){
       return {minRake:Math.min(...rakes),maxRake:Math.max(...rakes),sillRake:rakes.at(-1),
         paneHeight,sillY:sill.y,centerDrop:-dy,width,headerWidthFraction,roofSheetY,
         headerAheadOfAxle:rearAxle-header.z,sillBehindAxle:sill.z-rearAxle,
-        sillBow,mountedBreadth,mountedBow,headrestGap,pairedHits,bumperBands,plate,
+        sillBow,mountedBreadth,mountedBow,headrestGap,pairedHits,bumperBands,plate,garnish,wing,guide,
         stopMin:stopBounds.min.toArray(),stopMax:stopBounds.max.toArray(),show,road,
         chase:chaseLights(0),lowChase:chaseLights(1),error:gl.getError()};
     });
@@ -218,8 +247,15 @@ async function check(){
         `the black valance, pearl accent and black belt must wrap the rear on side ${side} at z=${z}`);
     }
     const {center,width,height}=report.plate;
-    assert(Math.abs(center[0])<.01 && center[1]>.36 && center[1]<.46 && center[2]>2 && center[2]<2.17
-      && width>.33 && width<.36 && height>.15 && height<.19,'the registration must fit the lower bumper recess');
+    assert(Math.abs(center[0])<.01 && center[1]>.64 && center[1]<.70 && center[2]>2 && center[2]<2.17
+      && width>.33 && width<.36 && height>.15 && height<.19,'the road and show plates share one high boot-lid mount');
+    assert.deepEqual(report.garnish,['paint','garnish','garnish','paint'],'the Toyota lift handle sits between painted shoulders');
+    const {wing,guide}=report;
+    assert(wing.height>.93 && wing.height<.97 && wing.flatnessMm<1.5 && wing.edgeRunoutMm<1.5 &&
+      wing.edgeZ>2.10 && wing.edgeZ<2.15 && wing.endHeight.every(y=>wing.height-y>.045 && wing.height-y<.15),
+      'the NEO86 blade must have a level top and straight trailing edge, with only the tips tapering');
+    assert(guide.inboard<.55 && guide.height>.123 && guide.hookInnerX>guide.inboard+.105,
+      'the outer lamps need a horizontal upper arm and a shorter hooked return');
     assert(!report.show.driver && report.road.driver,'the driver must appear on the road and leave the display car');
     assert(report.road.plate.every((green,i)=>green>report.show.plate[i]+24),'each sampled plate background must switch from dark display to light Gunma registration');
     const [minX,minY,minZ]=report.stopMin,[maxX,maxY,maxZ]=report.stopMax;

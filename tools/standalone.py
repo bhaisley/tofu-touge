@@ -24,6 +24,7 @@ def inline_scripts(match):
 def main():
     html = (DIST / "index.html").read_text(encoding="utf-8")
     css = (DIST / "style.css").read_text(encoding="utf-8")
+    css_assets = {DIST / src for src in re.findall(r"url\('([^']+)'\)", css)}
     css = re.sub(r"url\('([^']+)'\)", lambda m: "url('" + data_url(DIST / m[1]) + "')", css)
     html = re.sub(r'  <link rel="preload"[^>]+>\n', "", html)
     html = html.replace('<link rel="stylesheet" href="style.css">', "<style>\n" + css + "\n</style>")
@@ -39,7 +40,7 @@ def main():
     payload = []
     for bank, pattern in banks.items():
         for asset in sorted(DIST.glob(pattern)):
-            if asset.name not in {"haruna-dawn.webp", "haruna-night.webp"}:
+            if asset not in css_assets:
                 payload.append(
                     f'<script type="application/octet-stream" data-bank="{bank}" '
                     f'data-name="{asset.name}">{data_url(asset)}</script>'
@@ -47,6 +48,7 @@ def main():
     licenses = {
         "Three.js (MIT)": (DIST / "vendor/THREE-LICENSE.txt").read_text(encoding="utf-8"),
         "Barlow (SIL OFL)": (DIST / "assets/fonts/OFL.txt").read_text(encoding="utf-8"),
+        "Mount Fuji terrain (NASA/NGA SRTM 1 Arc-Second Global, USGS)": "https://doi.org/10.5066/F7PR7TFT",
         "Poly Haven materials (CC0)": {
             "license": "https://polyhaven.com/license",
             "Asphalt 04, Sergej Majboroda and Jenelle van Heerden": "https://polyhaven.com/a/asphalt_04",

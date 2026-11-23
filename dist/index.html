@@ -4,14 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#10191d">
-  <meta name="description" content="Drift a turbo NEO86 down Haruna Pass at dawn or drive the reverse climb under moonlight.">
-  <title>Tofu Touge — Haruna Pass</title>
+  <meta name="description" content="Drift the NEO86 through the cedars of Haruna Pass and along Mikuni Pass overlooking Mount Fuji. Drive each mountain in both directions.">
+  <title>Tofu Touge — Japanese Mountain Passes</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='9' fill='%23f26743'/%3E%3Cpath d='m8 47 21-32 10 16 5-7 13 23H45L34 31l-4 6-2-4-9 14z' fill='%2310191d'/%3E%3C/svg%3E">
-  <link rel="preload" as="image" href="assets/art/haruna-dawn.webp">
+  <script>
+    let lastStage;
+    try { lastStage = JSON.parse(localStorage.getItem('tofu-touge-settings-v1'))?.stage; } catch {}
+    const linkedStage = new URLSearchParams(location.search).get('stage');
+    document.documentElement.dataset.cover = [linkedStage, lastStage].find(
+      value => /^(fuji-)?(downhill|uphill)$/.test(value)
+    ) || 'downhill';
+  </script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body data-state="menu">
-  <canvas id="world" aria-label="Haruna Pass driving view"></canvas>
+  <div id="viewport"><canvas id="world" aria-label="Haruna Pass driving view"></canvas></div>
   <div id="cover" aria-hidden="true"><div class="cover-art"></div><div class="cover-shade"></div></div>
   <div id="race-vignette" aria-hidden="true"></div>
   <header class="topbar">
@@ -30,9 +37,15 @@
 
   <main id="menu">
     <div class="menu-copy">
-      <div class="course-picker" role="group" aria-label="Choose a Haruna course">
-        <button type="button" data-stage="downhill" aria-pressed="true"><i class="dawn-icon" aria-hidden="true"></i>Downhill <span>· Dawn</span></button>
-        <button type="button" data-stage="uphill" aria-pressed="false"><i class="night-icon" aria-hidden="true"></i>Uphill <span>· Night</span></button>
+      <div class="stage-pickers">
+        <div class="course-picker pass-picker" role="group" aria-label="Mountain pass">
+          <button type="button" data-map="haruna" aria-pressed="true">Haruna Pass</button>
+          <button type="button" data-map="fuji" aria-pressed="false">Mikuni · Fuji</button>
+        </div>
+        <div class="course-picker direction-picker" role="group" aria-label="Direction and time of day">
+          <button type="button" data-stage="downhill" aria-pressed="true"><i class="dawn-icon" aria-hidden="true"></i>Downhill <span>· Dawn</span></button>
+          <button type="button" data-stage="uphill" aria-pressed="false"><i class="night-icon" aria-hidden="true"></i>Uphill <span>· Night</span></button>
+        </div>
       </div>
       <h1 aria-label="Tofu Touge"><span class="title-line">TOFU<span class="speed-stripes" aria-hidden="true"><i></i><i></i><i></i></span></span><span class="title-line">TOUGE</span></h1>
       <p class="objective"><span id="stage-objective">Drift the hairpins of Haruna Pass.</span><br><span id="stage-destination">Bring the tofu down intact.</span></p>
@@ -102,6 +115,7 @@
   <script defer src="js/spray.js"></script>
   <script defer src="js/rock-cuts.js"></script>
   <script defer src="js/drift-effects.js"></script>
+  <script defer src="js/fuji.js"></script>
   <script defer src="js/world.js"></script>
 </body>
 </html>

@@ -434,116 +434,110 @@
     raisedHeadlights(api,nose);yield;
   }
 
-  function rearLamps(api,back) {
+  // The first-generation combination lamp follows the curved upper corner
+  // of the NEO bumper. Only its short outer return is visible in a true side view.
+  const lampTurn=.79,lampCornerX=.837;
+  function lensCurve(stations){
+    const curve=new THREE.CubicInterpolant(stations.map(k=>k[0]),stations.map(k=>k[1]),1);
+    return t=>curve.evaluate(t)[0];
+  }
+  const lensBrow=lensCurve([[0,.69],[.014,.784],[.045,.819],[.19,.842],[.37,.886],
+    [.56,.931],[.74,.975],[.81,.980],[.89,.939],[.95,.843],[1,.668]]);
+  const lensFloor=lensCurve([[0,.69],[.014,.535],[.042,.454],[.20,.451],[.30,.427],
+    [.40,.320],[.50,.180],[.59,.100],[.68,.089],[.76,.143],[.84,.256],[.92,.413],[1,.668]]);
+  const lampHeight=(t,h)=>.625+.218*h+.006*smooth(.16,.80,t);
+  const lampX=(t,h)=>mix(.500+.042*(1-h),lampCornerX,t/lampTurn);
+  function lampTopAt(x){
+    const station=inner=>clamp(lampTurn*(x-inner)/(lampCornerX-inner),0,lampTurn);
+    const t=station(lampX(0,lensBrow(station(.507))));
+    return lampHeight(t,lensBrow(t));
+  }
+
+  function rearLamps(api,back){
     const {b,profile,tube}=api;
-    const turn=.755;
     for(const side of [-1,1]){
-      const outward=[side*.27,0,1];
-      // The inboard edge follows the sloping boot aperture. At the outboard
-      // end the same shell turns along the quarter and converges to a point.
-      const face=(t,v,depth=0)=>{
-        const top=.828-.004*t+.004*Math.sin(Math.PI*t)-.029*smooth(.78,1,t);
-        const bottom=mix(.640+.034*t+.004*t*t,top-.0014,smooth(.707,1,t)**1.32);
-        const y=mix(bottom,top,v),inner=.480+.091*v;
-        const turnX=.839,proud=depth+.004;
-        if(t<=turn)return pressedRear(faceAtX(back,side*mix(inner,turnX,t/turn),y,proud));
-        const k=(t-turn)/(1-turn),start=faceAtX(back,side*turnX,y,proud);
-        const z=mix(start[2],1.773,k),flank=profile.sideAt(side,z,y,proud+.001);
-        const corner=.014*smooth(0,.10,k)*(1-smooth(.49,.88,k));
-        return [mix(start[0],flank[0],smooth(0,.44,k))+side*corner*(1-.38*v*v),y,z];
+      const outward=[side*.29,0,1];
+      const face=(t,h,depth=0)=>{
+        const y=lampHeight(t,h),proud=.0012+.42*depth;
+        if(t<=lampTurn)return faceAtX(back,side*lampX(t,h),y,proud);
+        const k=(t-lampTurn)/(1-lampTurn),start=faceAtX(back,side*lampCornerX,y,proud);
+        const cap=clamp((k-.66)/.34,0,1);
+        const z=mix(start[2],1.863,k+.34*cap*cap*(1-cap)),flank=profile.sideAt(side,z,y,proud+.0015);
+        const round=.006*smooth(0,.16,k)*(1-smooth(.57,.94,k));
+        return [mix(start[0],flank[0],smooth(0,.46,k))+side*round,y,z];
       };
-      b.patch('blackGlass',64,9,(t,v)=>face(t,v,.003+.002*Math.sin(Math.PI*v)),
-        outward,0x232226);
-      for(const edge of [0,1])b.patch('trim',64,3,(t,v)=>face(t,edge,mix(-.004,.005,v)),
-        [side*.24,edge?1:-1,.32],0x2d292d);
-      b.patch('trim',3,10,(u,v)=>face(0,v,mix(-.003,.005,u)),[-side,.23,.25],0x201f23);
+      const lens=(t,v,depth=0)=>face(t,mix(lensFloor(t),lensBrow(t),v),depth);
+      b.patch('blackGlass',68,10,(t,v)=>lens(t,v,.0025+.009*smooth(.69,.89,t)),outward,0x321d25);
+      for(const edge of [0,1]){
+        b.patch('trim',68,3,(t,v)=>lens(t,edge,mix(-.003,.010,v)),
+          [side*.28,edge?1:-1,.55],0x292428);
+        b.patch('blackGlass',68,4,(t,v)=>lens(t,edge,mix(.010,.028,v)),
+          [side*.38,edge?1:-1,.48],0x642834);
+      }
       const perimeter=[];
-      for(let i=0;i<=55;i++)perimeter.push(face(i/55,1,.005));
-      for(let i=55;i>=0;i--)perimeter.push(face(i/55,0,.005));
-      for(let i=1;i<=18;i++)perimeter.push(face(0,i/18,.005));
-      tube(b,'rubber',perimeter,.0025,0x27252a,7);
+      for(let i=0;i<=64;i++)perimeter.push(lens(i/64,1,.006));
+      for(let i=63;i>=0;i--)perimeter.push(lens(i/64,0,.006));
+      tube(b,'rubber',perimeter,.0023,0x2a2326,7);
 
-      // One cast ruby diffuser has a slender upper arm, a deep outboard
-      // return and a broad, tapered lower blade reaching the trunk shutline.
-      const sections=[
-        [.050,.942,.052,.852],[.205,.951,.203,.854],[.400,.956,.398,.857],
-        [.565,.949,.528,.852],[.679,.924,.574,.821],[.730,.866,.592,.767],
-        [.754,.755,.596,.677],[.755,.611,.575,.564],[.741,.462,.537,.491],
-        [.710,.323,.474,.429],[.653,.220,.398,.394],[.546,.151,.303,.374],
-        [.413,.128,.222,.358],[.260,.110,.134,.345],[.119,.104,.072,.339],[.050,.105,.047,.331]
-      ];
-      const rim=new THREE.SplineCurve(sections.map(p=>new THREE.Vector2(p[0],p[1])));
-      const inside=new THREE.SplineCurve(sections.map(p=>new THREE.Vector2(p[2],p[3])));
-      const guide=(u,v,d)=>{
-        const a=rim.getPoint(u),c=inside.getPoint(u);
-        return face(mix(a.x,c.x,v),mix(a.y,c.y,v),d);
+      // The shallow row of nickel reflector cups sits above the hooked return.
+      // An individual cut lens covers each LED on the common smoked backplate.
+      const bank=(q,v,depth)=>{
+        const t=mix(.039,.707,q),h=.567+.063*q+.085*(v-.5)*2;
+        return face(t,h,depth);
       };
-      b.patch('blackGlass',72,6,(u,v)=>guide(u,v,.007+.002*Math.sin(Math.PI*v)),
-        outward,0x701c2a);
-      const ruby=(u,v)=>guide(u,v,.010+.0042*Math.sin(Math.PI*v));
-      for(const [a,c,color] of [[.064,.198,0xb5243b],[.198,.787,0xed3d47],[.787,.938,0x982332]]){
-        b.patch('tail',72,4,(u,v)=>ruby(u,mix(a,c,v)),outward,color);
-      }
-      b.patch('brake',72,6,(u,v)=>{
-        const lower=smooth(.56,.88,u),from=mix(.26,.17,lower),to=mix(.73,.80,lower);
-        const h=mix(from,to,v);
-        return guide(u,h,.01035+.0042*Math.sin(Math.PI*h)+.0008*Math.sin(Math.PI*v));
-      },outward,0xea353c);
-      for(const v of [.031,.964])b.patch('blackGlass',68,2,(u,h)=>guide(u,v+.010*h,.0098),
-        outward,0x861d32);
-      for(const v of [.12,.26,.79,.89])b.patch('optic',56,1,(u,h)=>guide(mix(.36,.985,u),v+.010*h,.0133),
-        outward,0xae4350);
-      if(side===1&&api.lampSources){
-        api.lampSources.tailInner=guide(.006,.5,.014);
-        api.lampSources.tailOuter=guide(.31,.5,.014);
-        api.lampSources.tailBottom=guide(.632,.5,.014);
-        api.lampSources.tailReturn=guide(.994,.5,.014);
-      }
-
-      // The clear insert is one wide, canted chamber. Its chrome trough wraps
-      // four individual faceted cups and their ribbed transparent cover.
-      const bank=(q,v,d)=>{
-        const t=mix(.042+.013*(1-v),.558+.027*v,q);
-        const low=.392+.162*q*q,high=.768+.015*q-.020*q*q;
-        return face(t,mix(low,high,v),d);
-      };
-      b.patch('blackGlass',36,7,(u,v)=>bank(u,v,.009),outward,0x171b20);
-      b.patch('metal',34,6,(u,v)=>bank(mix(.018,.98,u),mix(.091,.926,v),.013),
-        outward,0x82888c);
-      for(const [a,c] of [[.085,.156],[.820,.901]]){
-        b.patch('chrome',36,3,(u,v)=>bank(mix(.017,.985,u),mix(a,c,v),
-          .0135+.0020*Math.sin(v*Math.PI)),outward,0xcacbd0);
-      }
-      for(let i=0;i<4;i++){
-        const q=.150+i*.230,span=.095,center=.510+.015*Math.cos(i*1.37);
-        const cup=(x,y,d)=>bank(q+span*x,center+.270*y,d);
-        b.patch('clearCells',16,9,(u,v)=>{
+      b.patch('blackGlass',38,6,(u,v)=>bank(u,v,.0083),outward,0x222226);
+      for(const edge of [0,1])b.patch('metal',34,2,(u,v)=>bank(u,edge?mix(.933,.982,v):mix(.018,.061,v),.0107),
+        outward,0x777b7d);
+      for(let i=0;i<9;i++){
+        const q=(i+.5)/9;
+        const cup=(a,h,d)=>bank(q+.050*a,.53+.38*h,d);
+        b.patch('clearCells',10,7,(u,v)=>{
           const x=u*2-1,y=(v*2-1)*Math.sqrt(Math.max(0,1-x*x)),r=x*x+y*y;
-          return cup(x,y,.0142+.0044*r+.0006*r*Math.cos(7*Math.atan2(y,x)));
-        },outward,0xcdcfcf,(u,v)=>[u,v]);
-        b.patch('metal',12,3,(u,v)=>{
-          const a=2*Math.PI*u;return cup(.25*v*Math.cos(a),.31*v*Math.sin(a),.0169+.0016*(1-v*v));
-        },outward,0x747a7d);
-        b.patch('chrome',7,2,(u,v)=>cup((u-.32)*.41,(v-.55)*.15+.30-.29*u,.0184),
-          outward,0xdbdcda);
+          return cup(x,y,.0106+.0034*r+.0006*r*Math.cos(7*Math.atan2(y,x)));
+        },outward,i%3===0?0x9c9698:0x827f84);
+        b.patch('blackGlass',10,3,(u,v)=>{
+          const a=2*Math.PI*u;
+          return cup(.20*v*Math.cos(a),.25*v*Math.sin(a),.0123);
+        },outward,0x414044);
+        b.patch('optic',6,2,(u,v)=>cup((u-.38)*.70,.34-.30*u+.070*v,.0143),outward,0xdad5d1);
       }
-      b.patch('optic',46,6,(u,v)=>bank(mix(.009,.994,u),mix(.062,.957,v),
-        .0187+.0023*Math.sin(Math.PI*v)+.00034*Math.cos(u*36*Math.PI)),outward,0xf0f2ef);
+      const divider=spline([[.042,.437],[.196,.439],[.290,.420],[.388,.364],[.476,.296],
+        [.561,.271],[.640,.275],[.695,.311]].map(([t,h])=>face(t,h,.012)),36);
+      tube(b,'blackGlass',divider,.0059,0x4e252c,8);
 
-      // The dark forward extension on the wing contains a separate triangular
-      // red reflector and a slim smoked upper return.
-      const marker=(u,v,d)=>{
-        const t=mix(.789+.010*(1-v),.954+.014*v,u);
-        return face(t,mix(.248+.311*u,.760+.060*u,v),d);
+      // One open J-shaped light pipe has a long upper arm, a round outside
+      // bend, and a short lower hook ending under the reflector bank.
+      const anchors=[[.044,.760],[.170,.787],[.350,.814],[.514,.844],[.632,.873],
+        [.694,.865],[.735,.818],[.762,.731],[.774,.628],[.768,.516],[.744,.409],
+        [.707,.320],[.659,.253],[.601,.216],[.541,.209],[.492,.229],[.452,.260]];
+      const rail=new THREE.CatmullRomCurve3(anchors.map(([t,h])=>new THREE.Vector3(...face(t,h,.0155))),
+        false,'centripetal');
+      const frames=Array.from({length:73},(_,i)=>{
+        const t=i/72,point=rail.getPointAt(t),tangent=rail.getTangentAt(t);
+        const n=new THREE.Vector3(side*.36*smooth(.63,.843,Math.abs(point.x)),.025,1).normalize();
+        const across=new THREE.Vector3().crossVectors(tangent,n).normalize();
+        n.crossVectors(across,tangent).normalize();
+        return {point,n,across};
+      });
+      const section=(u,v,width,thickness,depth)=>{
+        const {point,n,across}=frames[Math.round(72*u)],h=v*2-1;
+        const taper=(.55+.45*smooth(0,.024,u))*(1-.65*smooth(.942,1,u));
+        return point.clone().addScaledVector(across,width*h*taper)
+          .addScaledVector(n,.42*(depth+thickness*Math.sqrt(Math.max(0,1-h*h)))).toArray();
       };
-      b.patch('blackGlass',22,6,(u,v)=>marker(u,v,.007+.0028*Math.sin(Math.PI*v)),
-        [side,0,.38],0x621723);
-      for(const v of [.22,.44,.67])b.patch('blackGlass',20,2,(u,h)=>marker(mix(.05,.93,u),v+.028*h,.010),
-        [side,0,.38],0x732733);
-      b.patch('metal',15,2,(u,v)=>face(mix(.900,.969,u),.81+v*.047,.010),
-        [side,0,.25],0x62646b);
-      b.patch('smokeLens',64,9,(u,v)=>face(u,v,.020+.0049*Math.sin(Math.PI*v)*Math.sin(Math.PI*(.10+.82*u))),
-        outward,0xe7d7d9);
+      b.patch('blackGlass',72,8,(u,v)=>section(u,v,.0152,.0059,.0004),outward,0x7a2331);
+      b.patch('tail',72,8,(u,v)=>section(u,v,.0120,.0046,.0042),outward,0xb82b37);
+      b.patch('brake',72,7,(u,v)=>section(u,v,.0080,.0025,.0074),outward,0xce4748);
+      if(side===1){
+        const pos=i=>frames[i].point.toArray();
+        api.lampSources.tailInner=pos(0);api.lampSources.tailOuter=pos(29);
+        api.lampSources.tailBottom=pos(55);api.lampSources.tailReturn=pos(72);
+      }
+      for(const v of [.26,.45,.64,.83])b.patch('clearCells',18,3,(u,h)=>{
+        const t=mix(.795,.956,u);
+        return lens(t,v+.047*h,.0132+.0010*Math.sin(Math.PI*h));
+      },[side,.03,.5],0x872d38);
+      b.patch('smokeLens',68,10,(u,v)=>lens(u,v,.028+.005*Math.sin(Math.PI*v)),outward,0xc19699);
     }
   }
 
@@ -554,59 +548,45 @@
     const hermite=(from,to,m0,m1,t)=>
       mix(from,to,t*t*(3-2*t))+t*(1-t)*(m0*(1-t)-m1*t);
     const deckPoint=(q,z)=>rearDeck.deck(z,q*rearDeck.outerU(z));
-    const startZ=rearDeck.start,neckCrown=clamp(deckPoint(0,startZ)[1]-.061,.899,.952);
+    const startZ=rearDeck.start,flatStart=1.847,bladeY=.948,bladeZ=2.122;
     const profiles=new Map();
     function column(x){
       if(profiles.has(x))return profiles.get(x);
       const dx=Math.abs(x),q=x/fullWidth;
-      const base=deckPoint(q,rearZ);
-      const landing=faceAtX(back,x,base[1]-.012);
+      const base=deckPoint(q,rearZ),landing=faceAtX(back,x,base[1]-.012);
       landing[0]=x;
-      // The kit has a broad, nearly level trailing blade. Short bevels turn
-      // its ends into the lid above the combination lamps.
-      const blade=1-smooth(.536,.719,dx),endReturn=1-smooth(.565,.682,dx);
-      const lampSeat=smooth(.630,.695,dx)*(1-smooth(.804,fullWidth,dx));
-      const endZ=Math.max(rearZ,mix(landing[2]+.046*endReturn,
-        lampSeat?faceAtX(back,x,.829)[2]:landing[2],lampSeat));
-      const lampCrown=smooth(.47,.64,dx)*(1-smooth(.765,fullWidth,dx));
-      const shoulder=mix(landing[1],.833,lampCrown);
-      const crown=Math.min(1,dx/.67);
-      const tip=mix(shoulder,.955-.009*crown*crown,blade);
-      const neck=startZ+.225+.017*smooth(.38,.73,dx);
+      // A level transverse plane and one straight trailing edge span the
+      // kit's blade. Only its short outer end caps sweep into the quarters.
+      const blade=1-smooth(.603,.700,dx),seat=smooth(.625,.689,dx)*(1-smooth(.804,fullWidth,dx));
+      const lampY=lampTopAt(dx),lampZ=seat?faceAtX(back,x,lampY)[2]:landing[2];
+      const endZ=Math.max(rearZ,mix(mix(landing[2],lampZ,seat),bladeZ,blade));
+      const shoulder=mix(landing[1],lampY+.004,smooth(.485,.63,dx)*(1-smooth(.762,fullWidth,dx)));
       const opening=deckPoint(q,startZ)[1];
       const openingSlope=(deckPoint(q,startZ+.001)[1]-deckPoint(q,startZ-.001)[1])/.002;
-      const neckY=mix(deckPoint(q,neck)[1],neckCrown-.021*Math.min(1,dx/.70)**2,1-smooth(.70,.82,dx));
-      const secant=(tip-neckY)/(endZ-neck);
-      const neckSlope=Math.min(0,.43*secant),tipSlope=secant*(secant>0?1.68:.85);
-      const flank=smooth(.43,.651,dx),exitSlope=.87*(tip-opening)/(endZ-startZ);
-      const result={x,q,base,landing,endZ,neck,neckY,opening,openingSlope,neckSlope,tip,tipSlope,
-        flank,exitSlope,shape:1-smooth(.756,fullWidth,dx)};
+      const result={x,q,base,landing,endZ,blade,shoulder,opening,openingSlope,lampY,
+        shape:1-smooth(.756,fullWidth,dx)};
       profiles.set(x,result);
       return result;
     }
     function topAt(c,z){
-      const run=c.neck-startZ,tail=c.endZ-c.neck;
-      const blade=z<=c.neck?hermite(c.opening,c.neckY,c.openingSlope*run,c.neckSlope*run,(z-startZ)/run):
-        hermite(c.neckY,c.tip,c.neckSlope*tail,c.tipSlope*tail,(z-c.neck)/tail);
-      // Outside the blade, a single shoulder slope runs down from the
-      // backlight to the lamp. The deck never levels off at the lid edge.
-      const span=c.endZ-startZ;
-      const shoulder=hermite(c.opening,c.tip,c.openingSlope*span,c.exitSlope*span,(z-startZ)/span);
+      const run=flatStart-startZ,span=c.endZ-startZ;
+      const flat=z<flatStart?hermite(c.opening,bladeY,c.openingSlope*run,0,(z-startZ)/run):bladeY;
+      const flank=hermite(c.opening,c.shoulder,c.openingSlope*span,.88*(c.shoulder-c.opening),(z-startZ)/span);
       const cap=clamp((z-rearZ)/Math.max(.00001,c.endZ-rearZ),0,1);
       const p=z<=rearZ?deckPoint(c.q,z):[c.x,mix(c.base[1],c.landing[1],smooth(0,1,cap)),z];
-      p[1]=mix(p[1],mix(blade,shoulder,c.flank),c.shape);
+      p[1]=mix(p[1],mix(flank,flat,c.blade),c.shape);
       return p;
     }
     const rearSkin=(u,v)=>{
       const c=column(u*aftWidth),p=blend(c.landing,topAt(c,c.endZ),v);
       // The lower part of the boot tucks back under the kit's rolled lip.
       // The shallow, upright nose of the blade carries the high stop lamp.
-      const fold=.18*v*(2-v)+.82*smooth(.30,.78,v);
+      const fold=.13*v*(2-v)+.87*smooth(.40,.78,v);
       p[2]=mix(c.landing[2],c.endZ,mix(v,fold,1-smooth(.62,.719,Math.abs(c.x))));
       p[1]-=radius(u)*smooth(.81,1,v);
       const x=Math.abs(p[0]);
-      if(x>.535 && p[1]<.846){
-        const socket=smooth(.535,.571,x)*(1-smooth(.813,fullWidth,x))*(1-smooth(.830,.846,p[1]));
+      if(x>.506 && p[1]<c.lampY+.019){
+        const socket=smooth(.506,.535,x)*(1-smooth(.817,fullWidth,x))*(1-smooth(c.lampY+.001,c.lampY+.019,p[1]));
         const clearance=faceAtX(back,p[0],p[1])[2]+.0008;
         p[2]-=Math.max(0,p[2]-clearance)*socket;
       }
@@ -700,7 +680,7 @@
     const joint=rearDeck.shutline(1,1),prior=rearDeck.shutline(1,.997);
     const tangent=(joint[0]-prior[0])/(joint[2]-prior[2]);
     const edgeAt=z=>hermite(joint[0],edgeX,span*tangent,.117*span,clamp((z-startZ)/span,0,1));
-    const r=radius(edgeX/aftWidth),finish=heightAt((edgeX-.0035)/aftWidth,.8285);
+    const r=radius(edgeX/aftWidth),finish=heightAt((edgeX-.0035)/aftWidth,lampTopAt(edgeX-.0035)+.0006);
     for(const s of [-1,1]){
       const path=[];
       for(let k=0;k<=36;k++){
@@ -720,6 +700,16 @@
         const t=k/8,x=edgeX-.0035*smooth(0,1,t);
         const p=rearSkin(s*x/aftWidth,mix(1,finish,t));
         p[2]+=.0009;path.push(p);
+      }
+      // The outer steel shoulder ends above the lens. Continue its parting
+      // line down the bumper stamping to the upper surface of the lamp seal.
+      const from=path.at(-1),endX=s*(edgeX-.0035),endY=lampTopAt(Math.abs(endX));
+      const seal=faceAtX(back,endX,endY,.0012+.42*.006);
+      const steel=y=>pressedRear(faceAtX(back,endX,y));
+      const fromDepth=from[2]-steel(from[1])[2],toDepth=seal[2]-steel(endY)[2];
+      for(let k=1;k<=6;k++){
+        const t=k/6,p=steel(mix(from[1],endY,t));
+        p[2]+=mix(fromDepth,toDepth,smooth(0,1,t));path.push(p);
       }
       tube(b,'rubber',path,.0018,0x424846,6);
     }
@@ -742,161 +732,110 @@
     insert('stopLamp',.314,.0140,.0051,-.0018,0xae3943);
     for(let i=0;i<12;i++)b.patch('optic',2,2,(u,v)=>stop((i-5.5)*.0233+(u-.5)*.0013,(v-.5)*.009,-.0008),
       rear,0x953a46);
-    // The reversing camera sits in a small black grommet below the stop lamp.
-    for(const [r,depth,finish,color] of [[.0108,.0012,'rubber',0x252827],[.0068,.0024,'blackGlass',0x232833]]){
-      b.patch(finish,24,5,(u,v)=>{
-        const a=2*Math.PI*u;
-        return stop(r*v*Math.cos(a),-.046+r*v*Math.sin(a),depth+.0013*(1-v*v));
-      },rear,color);
-    }
+
   }
 
-  // The pearl bumper rolls forward into a tapered plate well. Its shoulder
-  // and the stamped trunk skin retain their own curvature on either side.
-  function pressedRear(p) {
-    const x=Math.abs(p[0]),y=p[1],height=.123,center=.409,corner=.024;
-    const half=mix(.322,.391,clamp((y-center+height)/(2*height),0,1));
-    const dx=x-half+corner,dy=Math.abs(y-center)-height+corner;
-    const edge=Math.hypot(Math.max(0,dx),Math.max(0,dy))+Math.min(Math.max(dx,dy),0)-corner;
-    const wall=1-smooth(-.042,.005,edge);
-    const across=1-smooth(.665,.827,x);
-    const shoulder=.032*Math.exp(-(((y-.546)/.080)**2))*across;
-    const crown=.026*(1-smooth(.31,.55,x))*smooth(.567,.646,y)*(1-smooth(.755,.825,y));
-    const outside=p[2]+shoulder+crown;
-    // A shallow tilted floor lets the license plate sit on real mounting pads.
-    const floor=p[2]-rearDepthAt(y)+.060-.085*(y-center);
-    return [p[0],y,mix(outside,floor,wall)];
+  // The kit moves the plate into the boot. The bumper below it is one
+  // uninterrupted shelf, with a second shallow pressing around each lamp.
+  function pressedRear(p){
+    const x=Math.abs(p[0]),y=p[1];
+    const bell=t=>Math.exp(-t*t);
+    const across=1-smooth(.71,.848,x);
+    const bumper=.026*bell((y-.529)/.050)*across;
+    const boot=smooth(.544,.607,y)*(1-smooth(.729,.839,y));
+    const cheek=.399+.102*smooth(.548,.808,y);
+    const well=boot*(-.015*(1-smooth(.31,.432,x))+.014*bell((x-cheek)/.048));
+    const t=clamp(lampTurn*(x-.522)/(lampCornerX-.522),0,lampTurn),low=lampHeight(t,lensFloor(t));
+    const bezel=(.014*bell((y-low+.044)/.043)-.014*bell((y-low+.001)/.023))*
+      smooth(.477,.560,x)*(1-smooth(.795,.855,x));
+    const top=lampHeight(t,lensBrow(t)),inner=.500+.042*(1-clamp((y-.625)/.218,0,1));
+    const socket=smooth(inner-.011,inner+.012,x)*(1-smooth(.838,.871,x))*
+      smooth(low-.002,low+.016,y)*(1-smooth(top-.018,top+.0008,y));
+    return [p[0],y,p[2]+bumper+well+bezel-.018*socket];
   }
 
-  // The lower shutline is almost horizontal in the centre before sweeping
-  // up to the raked inboard ends of the two lamp housings.
-  function trunkSill(x) {
+  // This U-shaped fold passes below the plate and joins the inboard lower
+  // corner of each lamp. The broad white landing is outside the boot opening.
+  const bootEdge=lensCurve([[0,.566],[.24,.567],[.327,.570],[.375,.578],[.412,.593],
+    [.449,.621],[.489,.665],[.519,.702],[.536,.723]]);
+  const trunkSill=x=>bootEdge(clamp(Math.abs(x),0,.536));
+
+  function diffuserTop(x){
     const a=Math.abs(x);
-    return .577+.004*(a/.57)**2
-      +.024*smooth(.31,.475,a)+.110*smooth(.390,.578,a)
-      +.100*smooth(.460,.572,a);
+    return .345-.094*smooth(.661,.837,a)+.006*Math.exp(-(((a-.632)/.062)**2));
   }
-
-  function diffuserTop(x) {
-    const a=Math.abs(x);
-    return .270+.096*smooth(.268,.473,a)*(1-smooth(.604,.805,a))-.108*smooth(.667,.821,a);
-  }
-
   const exhaustX=.522,exhaustY=.219;
-  function diffuserBottom(x) {
+  function diffuserBottom(x){
     const a=Math.abs(x),distance=Math.abs(a-exhaustX);
-    const floor=.145+.019*(1-smooth(.33,.46,a));
-    // The liners turn over the open scallops around the two exhaust tips.
-    const arch=Math.sqrt(Math.max(0,1-(distance/.100)**2));
-    return mix(floor,exhaustY+.089*arch,1-smooth(.085,.102,distance));
+    const floor=.184-.052*smooth(.571,.806,a);
+    const arch=Math.sqrt(Math.max(0,1-(distance/.091)**2));
+    return mix(floor,exhaustY+.082*arch,1-smooth(.076,.095,distance));
   }
-
-  function diffuserSkin(p) {
+  function diffuserSkin(p){
     const a=Math.abs(p[0]),y=p[1];
-    const outlet=1-smooth(.071,.133,Math.hypot(a-exhaustX,(y-exhaustY)*1.05));
-    const undertray=(1-smooth(.126,.289,y))*(1-smooth(.30,.78,a));
-    const shelf=.006*Math.exp(-(((y-diffuserTop(a)+.014)/.009)**2));
-    return [p[0],y,p[2]-.047*outlet-.024*undertray+shelf];
+    const opening=1-smooth(.066,.113,Math.hypot(a-exhaustX,(y-exhaustY)*1.10));
+    const fold=.638+.122*(1-smooth(.132,.348,y));
+    const panel=(1-smooth(fold-.022,fold+.018,a))*(1-smooth(.213,.330,y));
+    const rib=.006*Math.exp(-(((a-fold)/.014)**2))*(1-smooth(.321,.358,y));
+    return [p[0],y,p[2]-.048*opening-.034*panel+rib];
   }
 
-  function deckDetails(api,back) {
-    const {b,atlasUV,tube}=api;
+  function deckDetails(api,back){
+    const {b,atlasUV}=api;
     const panel=(x,y,depth=0)=>{
       const p=pressedRear(faceAtX(back,x,y));p[2]+=depth;return p;
     };
-
-    // The cross-car garnish meets the top of both lamps. Its shallow rolled
-    // face catches a continuous highlight under the painted ducktail.
-    const half=.570;
-    const bridge=(u,v,depth=0)=>{
-      const x=half*(2*u-1);
-      const low=.788+.011*(x/half)**2;
-      return panel(x,low+.027*v,.010+.0045*Math.sin(Math.PI*v)+depth);
+    // A tapered, black lift handle has a shallow overhanging underside.
+    // Recess the camera and both white number lights under that single part.
+    const halfAt=v=>{
+      const corner=clamp((v-.68)/.32,0,1);
+      return .375-.036*v-.013*v*v-.016*(1-Math.sqrt(1-corner*corner));
     };
-    b.patch('blackGlass',80,9,bridge,rear,0x171b20);
-    for(const edge of [0,1])b.patch('trim',80,3,(u,v)=>{
-      const p=bridge(u,edge);p[2]-=.012*(1-v);p[1]+=(edge?1:-1)*.0015*(1-v);
-      return p;
-    },edge?up:down,0x202328);
-
-    // Three polished ovals stand proud of the dark convex emblem backing.
-    const badgeY=.724,rx=.064,ry=.041;
-    const badge=(x,y,lift=0)=>panel(x,badgeY+y,.004+.004*(1-Math.min(1,(x/rx)**2+(y/ry)**2))+lift);
-    b.patch('blackGlass',48,6,(u,v)=>{
-      const a=2*Math.PI*u;return badge(rx*v*Math.cos(a),ry*v*Math.sin(a));
-    },rear,0x181c20);
-    for(const [w,h,cy,gauge] of [[rx,ry,0,.0031],[.0485,.0136,.0135,.0025],[.0163,.0329,-.0015,.0029]]){
-      const rail=[];
-      for(let i=0;i<=48;i++){
-        const a=2*Math.PI*i/48;rail.push(badge(w*Math.cos(a),cy+h*Math.sin(a),.0027));
-      }
-      tube(b,'chrome',rail,gauge,0xe5e7e5,10);
+    const frame=(u,v,proud=0)=>{
+      const a=2*u-1,half=halfAt(v);
+      const y=mix(.767+.0015*(1-a*a),.855-.009*a**4,v);
+      return panel(a*half,y,.0125+.019*v+.0035*Math.sin(Math.PI*v)*(1-.55*a*a)+proud);
+    };
+    b.patch('blackGlass',44,10,frame,rear,0x191b21);
+    for(const side of [0,1]){
+      b.patch('trim',10,4,(u,v)=>{
+        const lip=frame(side,u),base=panel(lip[0],lip[1]);
+        return blend(base,lip,v);
+      },[(side?1:-1)*.75,.16,.25],0x23242a);
     }
-    const badgeAt=(x,y,d)=>panel(.349+x,.627+y,d);
-    curvedPanel(b,'chrome',(x,y)=>badgeAt(x-.028,y,.0016),rear,.051,.032,.002,0xb3b8b7);
-    b.face('marks',[badgeAt(-.052,-.015,.0035),badgeAt(.052,-.015,.0035),
-      badgeAt(.052,.015,.0035),badgeAt(-.052,.015,.0035)],rear,0xffffff,atlasUV('grBadge'));
+    for(const edge of [0,1])b.patch('trim',44,3,(u,v)=>{
+      const lip=frame(u,edge),base=panel(lip[0],lip[1]);
+      return blend(base,lip,v);
+    },edge?up:down,edge?0x2a2d31:0x292b2d);
+    const [bl,br,,tl]=atlasUV('toyotaWord');
+    b.patch('marks',18,4,(u,v)=>{
+      const h=mix(.17,.82,v),half=halfAt(h);
+      return frame(.5+(u-.5)*.299/(2*half),h,.0011);
+    },rear,0xffffff,(u,v)=>[mix(bl[0],br[0],u),mix(bl[1],tl[1],v)]);
 
-    // A graphite liner finishes the floor of the painted recess. The pearl
-    // keyline wraps into its side returns and ends cleanly at the liner.
-    const plateY=.409,plateHalf=.087;
-    b.patch('trim',60,14,(u,v)=>{
-      const y=mix(-.100,.100,v),r=.016;
-      const dy=Math.max(0,Math.abs(y)-(.100-r));
-      const side=mix(.292,.343,v)-r+Math.sqrt(Math.max(0,r*r-dy*dy));
-      return panel((2*u-1)*side,plateY+y,.0013);
-    },rear,0x25282a);
-    // Both the Gunma registration and the exhibition plate use the same mounts.
-    const lower=panel(0,plateY-plateHalf)[2],upper=panel(0,plateY+plateHalf)[2];
-    const plate=(x,y,d=0)=>[x,plateY+y,mix(lower,upper,.5+y/(plateHalf*2))+.009+d];
-    const edge=roundedRect(.352,.177,.007);
-    ring(b,'rubber',edge.map(([x,y])=>panel(x,plateY+y)),edge.map(([x,y])=>plate(x,y)),rear,0x242628);
-    roundPanel(b,'trim',(x,y)=>plate(x,y),rear,.352,.177,.007,0x2a2d2d);
-    b.face('marks',[plate(-.173,-.085,.0017),plate(.173,-.085,.0017),
-      plate(.173,.085,.0017),plate(-.173,.085,.0017)],rear,0xffffff,atlasUV('plate'));
+    const plateY=.670,h=.085;
+    const lower=panel(0,plateY-h)[2],upper=panel(0,plateY+h)[2];
+    const plate=(x,y,d=0)=>[x,plateY+y,mix(lower,upper,.5+y/(2*h))+.009+d];
+    const outline=roundedRect(.352,.177,.007);
+    ring(b,'rubber',outline.map(([x,y])=>panel(x,plateY+y)),outline.map(([x,y])=>plate(x,y)),rear,0x262728);
+    roundPanel(b,'trim',(x,y)=>plate(x,y),rear,.352,.177,.007,0x25272b);
+    b.face('marks',[plate(-.173,-h,.0016),plate(.173,-h,.0016),plate(.173,h,.0016),
+      plate(-.173,h,.0016)],rear,0xffffff,atlasUV('plate'));
 
     for(const side of [-1,1]){
-      for(const [cx,cy] of [[.337,.554],[.729,.419]]){
-        const sensor=(u,v,rad,depth)=>{
-          const a=2*Math.PI*u;
-          return panel(side*cx+rad*v*Math.cos(a),cy+rad*v*Math.sin(a),depth);
-        };
-        b.patch('trim',18,2,(u,v)=>sensor(u,v,.0086,.0008),rear,0x626665);
-        b.patch('paint',18,3,(u,v)=>sensor(u,v,.0072,.0011+.0003*(1-v*v)),rear,pearl);
-      }
-      const p=panel(side*.118,.516);
-      const light=(x,y,d=0)=>[p[0]+x,p[1]+.68*y-.73*d,p[2]+y*.73+.68*d];
-      roundPanel(b,'rubber',(x,y)=>light(x,y,.0011),[0,-.73,.68],.045,.013,.003,0x212426);
-      curvedPanel(b,'numberLight',(x,y)=>light(x,y,.0027),[0,-.73,.68],.032,.007,.002,0xd8e5e9);
-      if(side===1)api.lampSources.plate=light(0,0,.0027);
+      const p=frame(.5+side*.167/.750,0);
+      const light=(x,y,d=0)=>[p[0]+x,p[1]-.003+y*.65-d*.76,p[2]-.004+y*.76+d*.65];
+      roundPanel(b,'rubber',(x,y)=>light(x,y,.0006),[0,-.76,.65],.046,.014,.004,0x202226);
+      curvedPanel(b,'numberLight',(x,y)=>light(x,y,.0016),[0,-.76,.65],.033,.008,.003,0xe1e6ea);
+      if(side===1)api.lampSources.plate=light(0,0,.0016);
     }
-  }
-
-  function lowerBeacon(api,back) {
-    const {b}=api;
-    // The central red rear-fog reflector shares a recessed housing with the
-    // two clear reversing lamps. Its dark red lens is separate from the stop circuit.
-    const at=(x,y,depth=0)=>{
-      const p=diffuserSkin(faceAtX(back,x,.218+y));p[2]+=.004+depth;return p;
-    };
-    const lens=api.materials.metal.clone();
-    lens.map=api.materials.amber.map;lens.roughness=.23;lens.metalness=.22;
-    api.materials.reversePrism=lens;
-    curvedPanel(b,'rubber',at,rear,.477,.057,.012,0x202225);
-    for(const s of [-1,1]){
-      const bank=(u,v,d=0)=>{
-        const x=s*(.061+.166*u),y=(v-.5)*(.044-.003*u)+.003;
-        return at(x,y,d+.0023*Math.sin(Math.PI*v));
-      };
-      b.patch('reversePrism',31,7,(u,v)=>bank(u,v,.002),rear,0xf3f1e9);
-      for(let k=1;k<9;k++)b.patch('optic',1,4,(u,v)=>bank(k/9+(u-.5)*.009,v,.0048),rear,0xe6e6db);
+    const camera=frame(.207,0);
+    for(const [r,d,finish,col] of [[.0096,.0006,'rubber',0x24272a],[.0061,.0018,'blackGlass',0x29313d]]){
+      b.patch(finish,18,4,(u,v)=>{
+        const a=Math.PI*2*u;
+        return [camera[0]+r*v*Math.cos(a),camera[1]-.004+r*v*Math.sin(a),camera[2]-.004+d+.001*(1-v*v)];
+      },rear,col);
     }
-    const fog=(x,y,d=0)=>at(x,y-.004,d);
-    curvedPanel(b,'blackGlass',(x,y)=>fog(x,y,.0036),rear,.131,.056,.008,0x491821);
-    b.patch('reversePrism',28,8,(u,v)=>{
-      const p=fog((u-.5)*.118,(v-.5)*.042,.006);
-      p[2]+=.0022*Math.sin(Math.PI*v)+.0009*Math.cos(u*Math.PI*26);return p;
-    },rear,0x9f1c24);
   }
 
   function tailpipes(api,back) {
@@ -934,7 +873,7 @@
     const {b,profile}=api,back=makeEnd(profile,true);
     // The central stamping spans the space between the angled lamp edges.
     // Outer patches turn into the quarters using the same section as the sides.
-    const centerWidth=.571,sideWidth=y=>profile.sideAt(1,profile.rearZ,y)[0];
+    const centerWidth=.536,sideWidth=y=>profile.sideAt(1,profile.rearZ,y)[0];
     for(const side of [-1,0,1]){
       const raw=(u,y)=>{
         const edge=centerWidth/sideWidth(y);
@@ -983,16 +922,10 @@
       },down,0x212527);
       yield;
     }
-    for(const x of [-.304,-.191,.191,.304]){
-      b.patch('satin',16,8,(u,v)=>{
-        const run=Math.sin(Math.PI*u)**.74,y=.158-.030*v*run;
-        return [x+(.002+.004*v)*Math.cos(Math.PI*v),y,1.729+.371*u];
-      },[Math.sign(x),-.5,.16],0x373b3a);
-    }
     rearLamps(api,back);yield;
     deckDetails(api,back);yield;
     ducktail(api,back);yield;
-    lowerBeacon(api,back);tailpipes(api,back);
+    tailpipes(api,back);
   }
 
   window.TougeNeo86.buildFascias=window.TougeNeo86.staged(function* buildFascias(api){

@@ -77,12 +77,15 @@
     return material;
   }
 
-  function makeSky(scene, renderer) {
+  function makeSky(scene, renderer,course) {
+    const fuji=course?.mapId==='fuji';
+    const landscape=fuji?TougeFuji.horizonSource:horizonSource;
+    const keyLight=fuji?TougeFuji.sunDirection:sunlight;
     const material = new T.ShaderMaterial({
       side: T.BackSide, depthWrite: false, fog: false, toneMapped: false,
       extensions:{derivatives:true},
-      uniforms: {panorama: {value: null}, ready: {value: 0}, sunlight: {value: sunlight}, radiance: {value: 0},
-        night:{value:0},moonlight:{value:moonlight}},
+      uniforms: {panorama: {value: null}, ready: {value: 0}, sunlight: {value:keyLight}, radiance: {value: 0},
+        night:{value:0},moonlight:{value:moonlight},skyOrigin:{value:fuji?course.at(course.splits[0]-22):new T.Vector3()}},
       vertexShader: `varying vec3 direction;
         void main() {
           direction = position;
@@ -90,7 +93,7 @@
           gl_Position.z = gl_Position.w * .999999;
         }`,
       fragmentShader: `varying vec3 direction;
-        ${horizonSource}
+        ${landscape}
         uniform vec3 sunlight;
         uniform float radiance;
         float starSeed(vec2 p){
@@ -112,6 +115,7 @@
         void main() {
           vec3 d = normalize(direction);
           vec3 sky = horizonColor(d);
+          ${fuji?'#if 0':''}
           if(night>.5){
             vec2 angles=vec2(atan(d.x,-d.z)/6.2831853+.5,asin(clamp(d.y,-1.,1.))/3.14159265+.5);
             vec3 across=normalize(cross(vec3(0.,1.,0.),moonlight)),up=cross(moonlight,across);
@@ -130,7 +134,9 @@
               vec3 face=vec3(.94,.97,.99)*(.13+.87*phase)*(.96-.27*maria);
               sky=mix(sky,face*(1.+4.0*radiance),lunar);
             }
-          }else{
+          }else
+          ${fuji?'#endif':''}
+          if(night<.5){
             // Recover the photographed sun's radiance for the lighting probe.
             float solarDisc=smoothstep(.99968,.99998,dot(d,sunlight));
             sky+=vec3(4.0,3.0,1.7)*solarDisc*radiance;
@@ -142,11 +148,15 @@
     const geometry = new T.SphereGeometry(1900, 64, 30);
     const sky = new T.Mesh(geometry, material);
     sky.name = 'Haruna dawn'; sky.frustumCulled = false; sky.renderOrder = -100;
+    sky.userData.fuji=fuji;sky.userData.horizonSource=landscape;
     scene.add(sky);
-    const environments=[null,null];
+    const environments=[null,null],panoramas=[null,null];
     function setNight(night){
       const key=night?1:0;
-      material.uniforms.night.value=key;sky.name=night?'Moon above Haruna Pass':'Haruna dawn';
+      material.uniforms.night.value=key;
+      sky.name=fuji?(night?'Mikuni blue hour':'Mikuni afternoon'):(night?'Moon above Haruna Pass':'Haruna dawn');
+      material.uniforms.panorama.value=panoramas[fuji?key:0];
+      material.uniforms.ready.value=material.uniforms.panorama.value?1:0;
       if(!material.uniforms.ready.value){scene.environment=null;return;}
       if(!environments[key]){
         const capture = new T.Scene();
@@ -165,10 +175,14 @@
       scene.environment=environments[key].texture;
     }
     sky.userData.setNight=setNight;
-    new T.TextureLoader().load(window.TougeArtURLs?.['haruna-sky.webp'] || 'assets/art/haruna-sky.webp', texture => {
-      texture.colorSpace = T.SRGBColorSpace; texture.wrapS = T.RepeatWrapping;
-      material.uniforms.panorama.value = texture;material.uniforms.ready.value = 1;
-      setNight(material.uniforms.night.value===1);
+    const files=fuji?['mikuni-afternoon-sky.webp','mikuni-blue-hour-sky.webp']:['haruna-sky.webp'];
+    files.forEach((file,index)=>{
+      new T.TextureLoader().load(window.TougeArtURLs?.[file]||'assets/art/'+file,texture=>{
+        if(renderer.getContext().isContextLost())return;
+        texture.colorSpace=T.SRGBColorSpace;texture.wrapS=T.RepeatWrapping;panoramas[index]=texture;
+        const key=material.uniforms.night.value;
+        if(!fuji||key===index)setNight(key===1);
+      });
     });
     return sky;
   }
@@ -181,7 +195,7 @@
     material.onBeforeCompile = (shader,renderer) => {
       scan(shader);
       const uniforms = sky.material.uniforms;
-      for(const key of ['panorama','ready','night','moonlight'])shader.uniforms[key]=uniforms[key];
+      for(const key of ['panorama','ready','night','moonlight','skyOrigin'])shader.uniforms[key]=uniforms[key];
       shader.uniforms.cliff = {value:cliff}; shader.uniforms.cliffSurface = {value:cliffSurface};
       Object.assign(shader.uniforms,grassMaps);
       const surfaceVaryings = 'varying float passRim, passGrass; varying vec3 passLand; varying vec3 passSlope;\n';
@@ -189,7 +203,7 @@
         .replace('#include <project_vertex>', `#include <project_vertex>
           passLand=(modelMatrix*vec4(transformed,1.)).xyz; passRim=rim; passGrass=grassCover;
           passSlope=mat3(modelMatrix)*normal;`);
-      shader.fragmentShader = 'uniform sampler2D cliff,cliffSurface;\n' + surfaceVaryings + horizonSource + TougeGrass.surfaceShader(renderer) + shader.fragmentShader
+      shader.fragmentShader = 'uniform sampler2D cliff,cliffSurface;\n' + surfaceVaryings + sky.userData.horizonSource + TougeGrass.surfaceShader(renderer) + shader.fragmentShader
         .replace('#include <map_fragment>', `#include <map_fragment>
           // Thin soil exposes bedrock along the steeper faces. Project each
           // scan vertically so its grain retains scale on the pitch of the cut.
@@ -225,18 +239,36 @@
             vec3 distant = horizonColor(normalize(passLand-cameraPosition));
             gl_FragColor.rgb = mix(gl_FragColor.rgb,linearToOutputTexel(vec4(distant,1.)).rgb,atmosphericBlend);
           }`);
+      if(sky.userData.fuji){
+        // The dry susuki and volcanic soil scatter the grazing afternoon sun.
+        // Keep the hard reflections on the road, glass and painted bodywork.
+        shader.fragmentShader=shader.fragmentShader
+          .replace('max(.11, roughness *','max(.82, roughness *')
+          .replace('grass.albedo,grass.cover','grass.albedo*vec3(1.03,.93,.77),grass.cover')
+          .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+            reflectedLight.directSpecular*=.18;
+            reflectedLight.indirectSpecular*=.26;`);
+      }
     };
-    material.customProgramCacheKey = () => 'Haruna terrain';
+    material.customProgramCacheKey = () => sky.userData.fuji?'Mikuni terrain':'Haruna terrain';
   }
 
-  function makeSun(scene, resolution) {
+  function makeSun(scene, resolution,fuji=false) {
     const ambient=new T.HemisphereLight(0xe0eaf2, 0x806e58, .86);
     scene.add(ambient);
     const sun = new T.DirectionalLight(0xffe0b8, 2.65);
+    const afternoon=fuji?shadowsFor(TougeFuji.sunDirection):dayShadow;
+    const blueHour=fuji?shadowsFor(TougeFuji.dawnDirection):nightShadow;
     sun.userData.setNight=night=>{
       sun.userData.night=night;sun.color.setHex(night?0xc1d2ec:0xffe0b8);sun.intensity=night?.21:2.65;
       ambient.color.setHex(night?0x9bb7de:0xe0eaf2);ambient.groundColor.setHex(night?0x515367:0x806e58);
       ambient.intensity=night?.36:.86;
+      sun.userData.shadowFrame=night?blueHour:afternoon;
+      if(fuji){
+        sun.color.setHex(night?0xffd2be:0xffdbad);sun.intensity=night?.47:2.35;
+        ambient.color.setHex(night?0xc1cef0:0xdce9ed);ambient.groundColor.setHex(night?0x675e72:0x968367);
+        ambient.intensity=night?.69:.94;
+      }
     };
     sun.castShadow = true;
     const span = resolution >= 2048 ? 52 : 42;
@@ -266,7 +298,7 @@
   }
 
   function trackSun(sun, x, y, z, fx, fz) {
-    const {light,right:shadowRight,up:shadowUp}=sun.userData.night?nightShadow:dayShadow;
+    const {light,right:shadowRight,up:shadowUp}=sun.userData.shadowFrame||dayShadow;
     const target = sun.target.position.set(x + fx * 19, y - 1.0, z + fz * 19);
     const texel = 2 * sun.shadow.camera.right / sun.shadow.mapSize.x;
     const across = target.dot(shadowRight), up = target.dot(shadowUp);

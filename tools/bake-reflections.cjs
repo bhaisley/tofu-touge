@@ -1,4 +1,4 @@
-// With dist served locally, run: node tools/bake-reflections.cjs <local game URL>
+// With dist served locally, run: node tools/bake-reflections.cjs <local game URL> [haruna|fuji]
 // Requires Playwright. CHROME_BIN can select an installed Chromium-based browser.
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -6,20 +6,26 @@ const {chromium} = require('playwright');
 
 async function bake() {
   const source = process.argv[2] || 'http://127.0.0.1:8477/';
+  const map = process.argv[3] || 'haruna';
+  if (!['haruna', 'fuji'].includes(map)) throw Error('Choose haruna or fuji.');
+  const filename = map + '-reflections.webp';
   const browser = await chromium.launch({headless: true, executablePath: process.env.CHROME_BIN || undefined});
   try {
     const page = await browser.newPage({viewport: {width: 1280, height: 720}});
-    page.on('pageerror', error => console.error(error.message));
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
     // Car materials are outside the capture. A first bake can start with an empty asset directory entry.
-    await page.route('**/haruna-reflections.webp', route => route.fulfill({contentType: 'image/png',
+    await page.route('**/game.js', route => route.fulfill({contentType: 'text/javascript', body: ''}));
+    await page.route('**/' + filename, route => route.fulfill({contentType: 'image/png',
       body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')}));
     await page.goto(source);
-    const report = await page.evaluate(async () => {
+    const report = await page.evaluate(async map => {
       const T = THREE;
       const ready = new Promise((resolve, reject) => {
         T.DefaultLoadingManager.onLoad = resolve; T.DefaultLoadingManager.onError = url => reject(Error('Image failed: ' + url));
       });
-      const course = new TougeCourse();
+      const course = new TougeCourse(map);
       const world = new TougeWorld(document.createElement('canvas'), course);
       await ready;
       const {renderer, scene, sky} = world;
@@ -87,8 +93,9 @@ async function bake() {
         if(i%8===7)await new Promise(requestAnimationFrame);
       }
       return {count:grid.count,spacing:grid.spacing,data:canvas.toDataURL('image/webp',.94)};
-    });
-    const output = path.join(__dirname,'../dist/assets/art/haruna-reflections.webp');
+    }, map);
+    if (errors.length) throw Error(errors.join('\n'));
+    const output = path.join(__dirname, '../dist/assets/art', filename);
     await fs.writeFile(output,Buffer.from(report.data.split(',')[1],'base64'));
     console.log('Baked %d stations at %s m spacing into %s',report.count,report.spacing.toFixed(1),output);
   } finally { await browser.close(); }

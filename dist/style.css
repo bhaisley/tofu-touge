@@ -10,12 +10,14 @@ button:focus-visible{outline:2px solid #ffcd8d;outline-offset:4px}
 button:disabled{cursor:wait}
 button,kbd{font-synthesis:none}
 [hidden]{display:none!important}
-#world,#cover,#race-vignette{position:fixed;inset:0;width:100%;height:100%}
+#viewport,#world,#cover,#race-vignette{position:fixed;inset:0;width:100%;height:100%}
 #world{display:block;touch-action:none}
 #cover{pointer-events:none}
 .cover-art,.cover-shade{position:absolute;inset:0}
 .cover-art{background:#162126 url('assets/art/haruna-dawn.webp') center 57%/cover no-repeat}
-body[data-stage="uphill"] .cover-art{background-image:url('assets/art/haruna-night.webp')}
+html[data-cover="uphill"] .cover-art{background-image:url('assets/art/haruna-night.webp')}
+html[data-cover="fuji-downhill"] .cover-art{background-image:url('assets/art/mikuni-afternoon.webp')}
+html[data-cover="fuji-uphill"] .cover-art{background-image:url('assets/art/mikuni-blue-hour.webp')}
 .cover-shade{background:linear-gradient(90deg,rgba(6,15,18,.56),rgba(7,15,18,.18) 34%,transparent 57%),linear-gradient(180deg,rgba(9,18,21,.28),transparent 20%,transparent 65%,rgba(8,16,20,.48) 85%,rgba(8,15,18,.96))}
 body:not([data-state="menu"]) #cover{display:none}
 #race-vignette{display:none;background:linear-gradient(180deg,rgba(9,16,23,.37),transparent 17%,transparent 77%,rgba(12,14,20,.22));pointer-events:none}
@@ -51,6 +53,7 @@ body[data-state="racing"] .race-only,body[data-state="countdown"] .race-only{dis
 #menu{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:65px var(--edge) clamp(112px,15vh,160px);pointer-events:none}
 body:not([data-state="menu"]) #menu{display:none}
 .menu-copy{width:max-content;max-width:100%;pointer-events:auto}
+.stage-pickers{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
 .course-picker{display:inline-flex;gap:2px;padding:3px;border:1px solid #cad4cf65;background:#10191dd9}
 .course-picker button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:34px;padding:0 12px;border:0;border-bottom:2px solid transparent;background:transparent;color:#c6d0cf;font:700 .98rem Cond,Arial,sans-serif;letter-spacing:.035em}
 .course-picker button span{font:600 .76rem Barlow,Arial,sans-serif}
@@ -96,8 +99,8 @@ h1{font:italic 900 clamp(6.35rem,min(11.5vw,17.7vh),12.8rem)/.77 Race,Impact,san
 .vehicle-cell{border-block:0;border-right:0;background:transparent;text-align:left;align-items:flex-start;pointer-events:auto}
 .vehicle-cell .meta span{color:var(--orange);font-size:1.03em}
 .vehicle-cell:hover strong{color:#ffd1b9}
-body[data-state="viewcar"] #world,#world.chase-orbit{cursor:grab}
-body[data-state="viewcar"] #world:active,#world.chase-orbit.orbiting{cursor:grabbing}
+body[data-state="viewcar"] #viewport,#viewport.chase-orbit{cursor:grab}
+body[data-state="viewcar"] #viewport:active,#viewport.chase-orbit.orbiting{cursor:grabbing}
 #walkaround{position:fixed;inset:auto 0 0;display:flex;align-items:end;justify-content:space-between;gap:12px;padding:64px var(--edge) max(24px,env(safe-area-inset-bottom));pointer-events:none;background:linear-gradient(transparent,#0b1218b8)}
 .car-caption h2{margin:0;font:700 clamp(1.7rem,3.5vw,3rem)/1 Cond,Arial,sans-serif}
 .car-caption small{font:600 .4em var(--mono);color:#f4b18e;vertical-align:middle}

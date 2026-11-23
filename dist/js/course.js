@@ -10,13 +10,54 @@
     [453,394],[458,419],[443,438],[411,441],[361,427],[311,437],[286,463],[263,507],
     [213,540],[156,547],[80,552],[26,583],[12,633],[22,700],[43,749]
   ];
+  // Horizontal control points are metres east and north. Route 730 above Lake
+  // Yamanaka inspired this alignment; the long shelf faces Fuji at 251° and
+  // the eastbound return legs give the climb its own uninterrupted views.
+  const mikuniRoute = [
+    [531,-426],[473,-442],[413,-454],[348,-480],[283,-520],[217,-567],[131,-598],
+    [53,-603],[-15,-585],[-44,-556],[-48,-517],[-20,-482],[33,-461],[105,-448],
+    [179,-434],[249,-401],[287,-358],[292,-316],[269,-280],[228,-264],[167,-273],
+    [76,-300],[-38,-321],[-143,-363],[-247,-412],[-323,-426],[-398,-426],[-454,-407],
+    [-482,-373],[-480,-332],[-453,-299],[-389,-272],[-309,-258],[-233,-247],[-174,-217],
+    [-134,-170],[-118,-120],[-98,-76],[-44,-35],[36,-1],[74,36],[79,73],
+    [54,96],[6,104],[-50,83],[-115,43],[-202,26],[-277,34],[-336,59],
+    [-396,61],[-451,36],[-515,-16],[-588,-41],[-646,-29],[-677,3],[-674,43],
+    [-645,74],[-587,104],[-525,135],[-502,177],[-520,213],[-562,227],[-637,218],
+    [-730,203],[-799,208],[-828,240],[-819,280],[-781,310],[-711,338],[-621,356],
+    [-545,364],[-473,389],[-414,419]
+  ];
+  const passes = {
+    haruna: {
+      route, start:32, runout:56, half:4.85, spacing:2.2,
+      descent:['Cedar ridge','Five hairpins','Valley approach'],
+      ascent:['Valley climb','Five hairpins','Cedar summit'],
+      elevation:s=>8-.082*s+2.8*Math.sin(s/105)+1.6*Math.sin(s/213)
+    },
+    fuji: {
+      route:mikuniRoute, start:38, runout:50, half:4.45, spacing:2.4,
+      gates:[1360,3450], // Panorama-dai turnout and the upper Hirano switchback.
+      descent:['Myojin ridge','Panorama traverse','Hirano bends'],
+      ascent:['Hirano climb','Panorama traverse','Myojin crest'],
+      // Yamanashi's prefectural climb profile gives 4.6 km and 186 m.
+      // The summit approach maintains grade, the lower road eases into Hirano.
+      // https://www.yamanashi-kankou.jp/zenryoku/hill-climb/hyakusaka/course/921/index.html
+      elevation:(s,start,distance)=>{
+        const t=(s-start)/distance, angle=Math.PI*t;
+        return 8-186*(t+.205*Math.sin(angle)-.02*Math.sin(2*angle)+.012*Math.sin(4*angle));
+      }
+    }
+  };
   const T = THREE;
   const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
   const mix = (a,b,t) => a+(b-a)*t;
   const wrap = x => Math.atan2(Math.sin(x),Math.cos(x));
   const oppositeCourses=new WeakMap();
   class Course {
-    constructor(downhill=null) {
+    constructor(source='haruna') {
+      const downhill=source instanceof Course?source:null;
+      this.mapId=downhill?downhill.mapId:(source??'haruna');
+      const pass=passes[this.mapId];
+      if(!pass)throw new RangeError('Unknown pass '+this.mapId);
       this.night=!!downhill;
       this.direction=downhill?-1:1;
       if(downhill){
@@ -26,7 +67,7 @@
         this.start=length-downhill.finish;
         this.finish=length-downhill.start;
         this.splits=[length-downhill.splits[1],length-downhill.splits[0],this.finish];
-        this.sectors=['Valley climb','Five hairpins','Cedar summit'];
+        this.sectors=pass.ascent.slice();
         // Stations and the right-hand road frame increase in the driver's
         // direction. The paved surface stays in the same world coordinates.
         this.points=downhill.points.slice().reverse().map((p,i)=>({
@@ -35,20 +76,20 @@
         }));
         return;
       }
-      const spline = new T.CatmullRomCurve3(route.map(([x,north]) => new T.Vector3(x,0,-north)),false,'centripetal');
+      const spline = new T.CatmullRomCurve3(pass.route.map(([x,north]) => new T.Vector3(x,0,-north)),false,'centripetal');
       spline.arcLengthDivisions = 6000;
       this.length = spline.getLength();
-      this.start = 32;
-      this.finish = this.length-56;
+      this.start = pass.start;
+      this.finish = this.length-pass.runout;
       this.distance = this.finish-this.start;
-      this.half = 4.85;
-      this.segments = Math.ceil(this.length/2.2);
+      this.half = pass.half;
+      this.segments = Math.ceil(this.length/pass.spacing);
       this.step = this.length/this.segments;
       this.points = [];
       for (let i=0;i<=this.segments;i++) {
         const s = i*this.step;
         const p = spline.getPointAt(i/this.segments);
-        const h = 8 - 0.082*s + 2.8*Math.sin(s/105) + 1.6*Math.sin(s/213);
+        const h = pass.elevation(s,this.start,this.distance);
         this.points.push({x:p.x,z:p.z,y:h,s});
       }
       for(let i=0;i<=this.segments;i++) {
@@ -65,20 +106,21 @@
         p.curvature=wrap(b.heading-a.heading)/(b.s-a.s);
         p.bank=clamp(p.curvature*1.35,-0.055,0.055);
       }
-      this.splits=[this.start+this.distance/3,this.start+this.distance*2/3,this.finish];
-      this.sectors=['Cedar ridge','Five hairpins','Valley approach'];
+      const gates=pass.gates??[this.start+this.distance/3,this.start+this.distance*2/3];
+      this.splits=[...gates,this.finish];
+      this.sectors=pass.descent.slice();
       this.bounds={minX:Infinity,maxX:-Infinity,minZ:Infinity,maxZ:-Infinity};
       for(const p of this.points) {
         this.bounds.minX=Math.min(this.bounds.minX,p.x); this.bounds.maxX=Math.max(this.bounds.maxX,p.x);
         this.bounds.minZ=Math.min(this.bounds.minZ,p.z); this.bounds.maxZ=Math.max(this.bounds.maxZ,p.z);
       }
     }
-    get physicalCourse() {return this.night?oppositeCourses.get(this):this;}
+    get physicalCourse() {return this.direction<0?oppositeCourses.get(this):this;}
     reversed() {
       return oppositeCourses.get(this)||new Course(this);
     }
-    physicalStation(s) {return this.night?this.length-s:s;}
-    physicalIndex(i) {return this.night && i!==undefined?this.segments-1-i:i;}
+    physicalStation(s) {return this.direction<0?this.length-s:s;}
+    physicalIndex(i) {return this.direction<0 && i!==undefined?this.segments-1-i:i;}
     sample(distance) {
       const s=clamp(distance,0,this.length), i=Math.min(this.segments-1,Math.floor(s/this.step));
       const a=this.points[i], b=this.points[i+1], t=(s-a.s)/this.step;

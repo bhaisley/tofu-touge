@@ -1,14 +1,20 @@
 # Tofu Touge
 
-A Three.js drift game set on a fictional, Haruna-inspired pass in Gunma. Take the panda-painted turbo Toyota GR86 down 3.11 km of wet switchbacks at dawn, or start at Fujiwara Tofu after dark and climb 257 m to the summit. The two deliveries share the same road and have separate best times and scores.
+A Three.js drift game on two Japanese mountain passes. Deliver tofu in a panda-painted NEO86 through the wet cedar forest of Haruna or across an open ridge above Lake Yamanaka, with Mount Fuji across the water. Each pass has a downhill and uphill delivery, its own light in each direction, and separate records for all four runs.
 
 **[Play in your browser](https://bhaisley.github.io/tofu-touge/)** · [Download the offline game](https://github.com/bhaisley/tofu-touge/releases/latest/download/Tofu-Touge.html) · [Watch the full downhill run](https://bhaisley.github.io/tofu-touge/docs/media/haruna-full-run.mp4)
+
+## Mikuni Pass
+
+![The playable NEO86 on Mikuni Pass facing Mount Fuji in late afternoon and blue hour](docs/media/mikuni-pass.jpg)
+
+Descend from Myojin ridge past the Panorama-dai overlook to the Hirano switchbacks in late afternoon. For the return run, leave Hirano before sunrise and climb 186 m with the headlights on. Both deliveries follow the same 4.60 km of asphalt. The bends are original to the game. The length, elevation change and location of the overlook follow Yamanashi’s published cycling profile. [Drive the descent](https://bhaisley.github.io/tofu-touge/dist/?stage=fuji-downhill) · [Drive the ascent](https://bhaisley.github.io/tofu-touge/dist/?stage=fuji-uphill) · [Yamanashi course profile](https://www.yamanashi-kankou.jp/zenryoku/hill-climb/hyakusaka/course/921/index.html)
 
 ## Haruna after dark
 
 ![The NEO86 climbing Five Hairpins at night, with headlights on the wet pavement and twin exhaust flames](docs/media/haruna-night-ascent.jpg)
 
-Choose **Uphill · Night** on the title screen to leave Fujiwara Tofu and climb through Valley Climb, Five Hairpins and Cedar Summit. Headlights pick out the guardrails and lane markings between pools of light. This frame is from a complete night delivery using the standard gamepad inputs.
+Choose **Haruna Pass** and **Uphill · Night** to leave Fujiwara Tofu and climb 257 m through Valley Climb, Five Hairpins and Cedar Summit. The dawn descent returns to the shop along the same 3.11 km of wet switchbacks. This frame is from a complete night delivery using the standard gamepad inputs. [Drive Haruna at dawn](https://bhaisley.github.io/tofu-touge/dist/?stage=downhill) · [Drive Haruna at night](https://bhaisley.github.io/tofu-touge/dist/?stage=uphill)
 
 ## Promotional concept
 
@@ -26,7 +32,9 @@ In the original v0.1.0 downhill release, the delivery clock stops at **02:21.04*
 
 ## Screenshots
 
-![The Tofu Touge title screen with the NEO86 parked on the wet pass at dawn](docs/media/haruna-title.png)
+| Haruna · Night | Mikuni · Blue hour |
+| --- | --- |
+| ![NEO86 outside the tofu shop at night, showing the flat white trunk spoiler](dist/assets/art/haruna-night.webp) | ![NEO86 above Lake Yamanaka, with Fuji behind the flat rear wing](dist/assets/art/mikuni-blue-hour.webp) |
 
 | Cedar ridge · 40° of slip | Five hairpins · countersteering into the bend |
 | --- | --- |
@@ -34,13 +42,13 @@ In the original v0.1.0 downhill release, the delivery clock stops at **02:21.04*
 | **NEO86 · walkaround** | **Tofu delivered · all three sector splits** |
 | ![The playable white-and-black NEO86 in front of a torii gate](docs/media/neo86-walkaround.png) | ![Delivery results with a time of 02:21.04, 6,732 drift points and 100 percent tofu condition](docs/media/tofu-delivered.png) |
 
-These dawn screenshots come directly from v0.1.0. [Capture details](MEDIA_PROVENANCE.json)
+The four Haruna gameplay frames in the second table come directly from v0.1.0. [Original title screen](docs/media/haruna-title.png) · [Capture details](MEDIA_PROVENANCE.json)
 
 ## Play
 
 Open the browser edition or download **Tofu-Touge.html** and open it in a browser with WebGL enabled. The single-file edition embeds the renderer, models, art, fonts, soundtrack, and effects for offline play. [Play online](https://bhaisley.github.io/tofu-touge/) · [Download the standalone game](https://github.com/bhaisley/tofu-touge/releases/latest/download/Tofu-Touge.html)
 
-Select **View Car** on the title screen to inspect the playable GR86. Drag or use the arrow keys to orbit, and scroll, pinch, or press + / − to zoom. The right stick rotates the view on a standard gamepad. **Back** or Escape returns to the menu. [Compare the rear and paint in game](playtest/gr86-rear-and-paint.jpg) · [Rear glass close-up](playtest/neo86-rear-glass.jpg) · [Walkaround photographs](playtest/neo86-walkaround.jpg)
+Select **View Car** on either pass to inspect the playable GR86. On Mikuni the car parks by Panorama-dai. Drag or use the arrow keys to orbit, and scroll, pinch, or press + / − to zoom. The right stick rotates the view on a standard gamepad. **Back** or Escape returns to the menu. [NEO86 rear and flat spoiler](playtest/neo86-kit-rear.jpg) · [Rear glass close-up](playtest/neo86-rear-glass.jpg) · [Walkaround photographs](playtest/neo86-walkaround.jpg)
 
 While driving in **Chase** or **Low Chase**, hold the left mouse button and drag to look around the car. Drag sideways for a full orbit and vertically to change the viewing angle. Release the button to ease back behind the car. You can keep steering, accelerating and drifting throughout.
 
@@ -58,7 +66,7 @@ python3 -m http.server 8477 --bind 127.0.0.1 --directory dist
 
 Use WASD or the arrow keys to drive. Brake before a hairpin, turn in and pull Space briefly to lock the rear wheels. Release Space, feed in throttle and tap opposite steer to balance the slide. The drift readout shows your body slip angle. Straightening up banks the chain. Barrier hits cost tofu condition and break a live chain. Reaching zero condition ends the delivery. R recovers the car with a three-second penalty, C cycles cameras, M toggles sound, and Escape pauses.
 
-The Controls screen lists bindings for standard gamepads and touchscreens. On a controller, choose a course with D-pad left or right on the title screen. On a phone, the steering and pedals accept simultaneous touches. In portrait the handbrake sits above the brake, leaving room to keep a thumb on the accelerator. The results show all three sector splits. The game saves personal bests for each direction in the browser when local storage is available.
+The Controls screen lists bindings for standard gamepads and touchscreens. On a controller, use D-pad up or down to select the mountain and left or right to select the direction. On a phone, the steering and pedals accept simultaneous touches. In portrait the handbrake sits above the brake, leaving room to keep a thumb on the accelerator. The results show all three sector splits. The game saves personal bests for each pass and direction in the browser when local storage is available.
 
 ## Build and assets
 
@@ -66,7 +74,7 @@ The editable game lives in `dist/` and can be served by a static HTTP server. Re
 
 The GR86 and the pass are authored in JavaScript. Toyota publishes a 2,575 mm wheelbase, a 1,550 mm rear track and a roof height of 1,280 mm, or 1,310 mm including the antenna. Its rear and rear-quarter photographs guided the shape of the cabin. Result Japan exhibited its NEO86 on a 2014 ZN6. The game adapts its pop-up headlamps, overfenders, apron, trunk spoiler and eight-spoke wheels to the later GR86, with a right-hand-drive interior and tofu-shop lettering on the driver’s door. [Toyota specifications](https://global.toyota/en/newsroom/toyota/36247827.html) · [Toyota exterior photographs](https://media.toyota.co.uk/images/gr86-exterior-static-2022-current/) · [Result Japan’s NEO86 gallery](https://result-japan.net/items/696f0367286e6359c84cba20) · [Tokyo Auto Salon exhibit](https://www.tokyoautosalon.jp/2026/clist02/91001)
 
-The mounted GR86 rear views guided the swept C-shaped lamps and recessed plate. Result Japan’s photographs guided the broad spoiler and the short painted deck ahead of it. The center stop lamp sits under the lip. The black NEO86 lower finish carries on behind both rear wheels and wraps across the bumper. A narrow pearl stripe aligns with the side stripes above it. The lower bumper has one exhaust outlet on each side, as on the silver and red cars. View Car carries the black NEO86 exhibition plate and the downhill delivery uses the Gunma registration. Trees and sky openings reflect across the pearl body and black lacquer as the car turns. [Matched in-game rear views](playtest/gr86-rear-and-paint.jpg)
+The white NEO86 show car guided the short deck, flat upper blade, hooked tail lamps and black TOYOTA garnish. In the model the central 1.21 m of the blade shares one height, and the end bevels meet the quarters. The center stop lamp sits under the lip. A single high plate mount takes the black NEO86 exhibition plate in View Car and the Gunma registration during deliveries. The black apron wraps behind both rear wheels around twin exhaust tips. Trees and sky openings reflect across the pearl body and glossy black trim as the car turns. [Matched in-game rear views](playtest/neo86-kit-rear.jpg)
 
 The modeled rear glass measures about 1.21 m at its widest. The straight line from the center of the roof edge to the center of the sill is 0.75 m long and drops 0.19 m. The target outline comes from photographs. Toyota’s stock rear track supplied the scale for the straight-rear view, and a high rear-quarter view located the glass relative to the wheels. The lower edge bows toward the trunk and its corners meet the painted pillars. The cage diagonal clears the back of the driver’s headrest by 74 mm. The game’s widened wheel tracks measure 1.756 m front and 1.798 m rear. With the wheels straight, the sidewalls sit about 11 mm inside the front flare crowns and 13 mm inside the rear crowns. [Toyota Japan catalog, rear-quarter view](https://toyota.jp/pages/contents/request/webcatalog/86/gr86_main.pdf#page=6) · [Rear glass comparison](playtest/neo86-rear-glass.jpg) · [Wheel detail](playtest/haruna-detail-update.jpg)
 
@@ -88,7 +96,7 @@ The engine uses original synthesized exhaust recordings at 960, 2,400, 3,600 and
 
 ## Handling and chase cameras
 
-The title screen prepares the pass in short batches. You can choose either course, open the radio or read the controls while it loads. Before a countdown begins, the renderer prepares the shaders, textures and lights for that stage. During a run, shadows, wet asphalt and roadside mirrors use simpler geometry for details too small to resolve in those views. The main camera draws the full GR86.
+The title screen prepares the selected pass in short batches. You can change mountains, open the radio or read the controls while it loads. Switching directions reuses the road and its scenery. Changing mountains releases the previous graphics context. Before a countdown begins, the renderer prepares the shaders, textures and lights for that stage. During a run, shadows, wet asphalt and roadside mirrors use simpler geometry for details too small to resolve in those views. The main camera draws the full GR86.
 
 The chassis runs at 120 Hz. The front and rear tires share their available grip between cornering and longitudinal force. Braking shifts load forward, power goes to the rear axle, and a short rear lock can initiate a drift. Both rear contact patches lay rubber in proportion to slip. Hot tires leave a smoke plume on drier asphalt and throw more spray across standing water. The cameras, wheels and tire trails share an interpolated pose.
 
@@ -100,8 +108,8 @@ Run `node tools/check-forest.cjs` to verify vegetation placement and visibility 
 
 With Playwright and Chromium installed, `node tools/check-radio.cjs` exercises the offline song picker, measures audible output from all five tracks, and checks crossfades, rapid skips, pause and resume, and the saved selection. `node tools/check-touch.cjs` drives both stages and checks phone layouts, simultaneous touches, legacy records and the independent volume controls. Set `CHROME_BIN` to use an existing Chromium installation.
 
-Run `node tools/check-backlight.cjs` to measure the glass and cage clearance, trace the two-tone finish behind both wheels, verify the plate mounting and check the under-spoiler stop lamp and both outer brake lights in the offline game’s two chase cameras.
+Run `node tools/check-backlight.cjs` to measure the glass, cage clearance and flat spoiler, trace the two-tone finish behind both wheels, verify the plate mounting and check all three brake lights in both chase cameras. Run `node tools/check-passes.cjs` to exercise both Mikuni starts, map switching during a load, context release, and stage records in the offline game or at a served URL.
 
 ## Production decisions
 
-This build assumes one car, one fictional mountain pass, single-player delivery time attack, and accessible arcade handling. For a larger production, the decisions that change the work most are the minimum hardware and frame-rate target, intended controller or wheel support, handling reference, and number of passes, cars, rival drivers, and campaign events. A dimensioned scan or CAD model of the conversion would support a more exact exterior. Vehicle-specific recordings under load would support a future modern GR86 sound tune. Driver playtests on target hardware would help refine handling. Commercial planning should include the intended Toyota and Initial D branding permissions and review of the music model’s commercial terms.
+This build has one car, two mountain passes, single-player delivery time attack, and accessible arcade handling. For a larger production, the decisions that change the work most are the minimum hardware and frame-rate target, intended controller or wheel support, handling reference, and number of passes, cars, rival drivers, and campaign events. A dimensioned scan or CAD model of the conversion would support a more exact exterior. Vehicle-specific recordings under load would support a future modern GR86 sound tune. Driver playtests on target hardware would help refine handling. Commercial planning should include the intended Toyota and Initial D branding permissions and review of the music model’s commercial terms.

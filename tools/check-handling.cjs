@@ -113,46 +113,47 @@ function followLine(drive, cruise = 29, lateralAcceleration = 6) {
   return { steer, throttle: speed < target ? 0.75 : 0.05, brake: speed > target + 1.3 ? 0.5 : 0 };
 }
 
-function setupHairpin(drive) {
-  const p = drive.course.sample(543);
+function setupHairpin(drive, station, turn, speed) {
+  const p = drive.course.sample(station);
   drive.place(p.s);
-  drive.x = p.x + p.rx * 0.6;
-  drive.z = p.z + p.rz * 0.6;
-  drive.contact.offset = 0.6;
-  drive.speed = 17;
+  const outside = -turn * 0.6;
+  drive.x = p.x + p.rx * outside;
+  drive.z = p.z + p.rz * outside;
+  drive.contact.offset = outside;
+  drive.speed = speed;
   drive.gear = 2;
   drive.rpm = drive.speed / 0.287 * 60 / (2 * Math.PI) * 2.02 * 4.3;
 }
 
-function hairpinInput(drive, time, keyboard) {
-  if (time < 0.18) return { steer: keyboard ? -1 : -0.65, throttle: keyboard ? 0 : 0.45 };
+function hairpinInput(drive, time, keyboard, turn, hold) {
+  if (time < 0.18) return { steer: turn * (keyboard ? 1 : 0.65), throttle: keyboard ? 0 : 0.45 };
   const release = keyboard ? 0.47 : 0.51;
-  if (time < release) return { steer: -1, throttle: keyboard ? 1 : 0.7, handbrake: true };
-  if (time < release + (keyboard ? 2.6 : 2.7)) {
+  if (time < release) return { steer: turn, throttle: keyboard ? 1 : 0.7, handbrake: true };
+  if (time < release + hold) {
     if (keyboard) {
       // Short opposite-lock taps approximate how a keyboard driver catches
-      // the rear while continuing to accelerate through this left hairpin.
-      return { steer: (time - release) % 0.38 < 0.38 * 0.18 ? 1 : 0, throttle: 1 };
+      // the rear while continuing to accelerate through the hairpin.
+      return { steer: (time - release) % 0.38 < 0.38 * 0.18 ? -turn : 0, throttle: 1 };
     }
-    return { steer: 0.19, throttle: 0.8 };
+    return { steer: -turn * 0.19, throttle: 0.8 };
   }
   return followLine(drive);
 }
 
-function hairpinBench(course, keyboard) {
+function hairpinBench(course, keyboard, {station=543, turn=-1, speed=17, hold=keyboard?2.6:2.7} = {}) {
   const drive = new TougeDrive(course);
-  setupHairpin(drive);
+  setupHairpin(drive, station, turn, speed);
   let maxAngle = 0, slidingTime = 0, scrubTime = 0, maxOffset = 0, railContacts = 0;
   let counterTime = 0, lockedRear = false, banked = false, driftExit = false;
-  for (let i = 0; i < 12 / dt && drive.contact.s < 643; i++) {
+  for (let i = 0; i < 12 / dt && drive.contact.s < station + 100; i++) {
     const time = i * dt;
-    const input = hairpinInput(drive, time, keyboard);
+    const input = hairpinInput(drive, time, keyboard, turn, hold);
     const front = drive.wheelAngle, rear = drive.rearWheelAngle;
     drive.step(dt, input);
     assert(Math.abs(drive.wheelAngle - front) < 2 && Math.abs(drive.rearWheelAngle - rear) < 2,
       'visible wheel rotations must remain continuous through a full revolution');
     if (input.handbrake && Math.abs(drive.rearWheelAngle - rear) < Math.abs(drive.wheelAngle - front) * 0.16) lockedRear = true;
-    if (time < 3.21) {
+    if (time < (keyboard ? 0.47 : 0.51) + hold) {
       const angle = Math.abs(drive.angle) * degrees;
       maxAngle = Math.max(maxAngle, angle);
       maxOffset = Math.max(maxOffset, Math.abs(drive.contact.offset));
@@ -160,7 +161,7 @@ function hairpinBench(course, keyboard) {
         slidingTime += dt;
         if (drive.tireScrub > 0.42) scrubTime += dt;
       }
-      if (drive.angle < -0.18 && input.steer > 0) counterTime += dt;
+      if (drive.angle * turn > 0.18 && input.steer * turn < 0) counterTime += dt;
     } else if (Math.abs(drive.angle) < 0.10) {
       driftExit = true;
     }
@@ -171,9 +172,9 @@ function hairpinBench(course, keyboard) {
     for (const event of drive.events) if (event.type === 'bank') banked = true;
     drive.events.length = 0;
   }
-  assert(drive.contact.s >= 643 && drive.integrity === 100 && railContacts === 0);
+  assert(drive.contact.s >= station + 100 && drive.integrity === 100 && railContacts === 0);
   assert(maxAngle > 23 && maxAngle < 44 && slidingTime > 2 && scrubTime > 2);
-  assert(counterTime > (keyboard ? 0.35 : 2.4), 'countersteering should sustain the slide');
+  assert(counterTime > hold * (keyboard ? 0.13 : 0.89), 'countersteering should sustain the slide');
   assert(lockedRear && driftExit && banked && drive.score >= 100);
   return { peakBodySlipDegrees: rounded(maxAngle), secondsAbove12Degrees: rounded(slidingTime),
     strongScrubSeconds: rounded(scrubTime), countersteerSeconds: rounded(counterTime),
@@ -226,17 +227,36 @@ function barrierBench(course) {
   return { hits, damage, maxDegreesPerPhysicsStep: rounded(maxFrameHeadingChange) };
 }
 
-if (require.main === module) {
-  const course = new TougeCourse();
+function checkReverse(course) {
   const uphill = course.reversed();
   assert.equal(uphill.reversed(), course);
+  assert.equal(uphill.physicalCourse, course);
+  assert.equal(uphill.mapId, course.mapId);
   assert.equal(uphill.night, true);
+  const gates = [course.start,...course.splits].reverse();
+  [uphill.start,...uphill.splits].forEach((s,i)=>assert(Math.abs(uphill.physicalStation(s)-gates[i])<1e-8));
   for (let i = 0; i <= 60; i++) {
     const s = course.start + course.distance * i / 60;
     const a = course.sample(s), b = uphill.sample(course.length - s);
     assert(Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) < 0.001);
     assert(a.fx*b.fx + a.fz*b.fz < -0.9999);
     assert(Math.abs(a.grade + b.grade) < 0.00001 && Math.abs(a.bank + b.bank) < 0.00001);
+    for(const offset of [-course.half,course.half]){
+      assert(course.at(s,offset).distanceTo(uphill.at(course.length-s,-offset))<.001);
+    }
+  }
+}
+
+if (require.main === module) {
+  const course = new TougeCourse(), mikuni = new TougeCourse('fuji');
+  checkReverse(course);
+  checkReverse(mikuni);
+  assert(Math.abs(mikuni.distance-4600)<8);
+  assert(Math.abs(mikuni.sample(mikuni.start).y-mikuni.sample(mikuni.finish).y-186)<.01);
+  // From both grids the car is pointed within 12 degrees of the fixed summit.
+  const summit=251/degrees;
+  for(const approach of [mikuni,mikuni.reversed()]){
+    assert(Math.abs(wrap(approach.sample(approach.start).heading-summit))*degrees<12);
   }
   console.log(JSON.stringify({
     wetStraight: straightBench(),
@@ -244,8 +264,12 @@ if (require.main === module) {
     secondGearThrottleSteer: throttleSteerBench(),
     analogHairpin: hairpinBench(course, false),
     keyboardHairpin: hairpinBench(course, true),
+    hiranoDownhillHairpin: hairpinBench(mikuni, false, {station:3834, turn:-1, speed:18, hold:2.15}),
+    panoramaUphillHairpin: hairpinBench(mikuni.reversed(), true, {station:1934, turn:1, speed:18, hold:2.15}),
     route: fullRoute(course),
-    nightAscent: fullRoute(uphill),
+    nightAscent: fullRoute(course.reversed()),
+    mikuniDescent: fullRoute(mikuni),
+    mikuniAscent: fullRoute(mikuni.reversed()),
     barrier: barrierBench(course),
   }, null, 2));
 }

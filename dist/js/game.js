@@ -15,12 +15,13 @@
   const keys=new Set(), fingers=new Map(), previousButtons=new Map();
   const actions=new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD','Space']);
   let world=null,state='menu',dialog='',resumeTo='racing',controlParent='menu',loading=null;
-  let preparation=null,artReady=null,resumePreparation=null,warmScheduled=false,contextLost=false;
+  let preparation=null,artReady=null,warmScheduled=false,contextLost=false;
   let loadChannel;
   const loadTurns=[];
-  const walkaround=new TougeCarWalkaround(byId('world'),()=>state==='viewcar');
+  const viewport=byId('viewport');
+  const walkaround=new TougeCarWalkaround(viewport,()=>state==='viewcar');
   const canOrbit=()=>state==='racing' && !dialog && world?.cameraMode<2;
-  const chaseOrbit=new TougeChaseOrbit(byId('world'),canOrbit);
+  const chaseOrbit=new TougeChaseOrbit(viewport,canOrbit);
   let count=3.1,accumulator=0,prevTime=0,lastHud=0,toastTime=0,controlTab='keyboard',focusReturn=null;
   const fixed=1/120, settingsKey='tofu-touge-settings-v1';
   // Title controls can run while the remaining graphics scripts download.
@@ -31,10 +32,28 @@
     catch {return {};}
   }
   function write(key,value){try{localStorage.setItem(key,JSON.stringify(value));}catch{/* Private sessions can still play. */}}
-  const settings=read(settingsKey), downhill=new TougeCourse();
-  let course=settings.stage==='uphill'?downhill.reversed():downhill;
+  const stages={
+    downhill:{map:'haruna',name:'Haruna Pass',light:'Dawn',record:'tofu-touge-haruna-v1',
+      objective:'Drift the hairpins of Haruna Pass.',destination:'Bring the tofu down intact.'},
+    uphill:{map:'haruna',name:'Haruna Reverse',light:'Night',record:'tofu-touge-haruna-night-v1',
+      objective:'Climb the hairpins from the tofu shop.',destination:'Bring the delivery to the summit.'},
+    'fuji-downhill':{map:'fuji',name:'Mikuni Pass',light:'Late afternoon',record:'tofu-touge-mikuni-descent-v1',
+      objective:'Descend through silvergrass above Lake Yamanaka.',destination:'Deliver the tofu to Hirano.'},
+    'fuji-uphill':{map:'fuji',name:'Mikuni Ascent',light:'Blue hour',record:'tofu-touge-mikuni-ascent-v1',
+      objective:'Climb from Hirano before sunrise.',destination:'Take the delivery up Mikuni Pass.'}
+  };
+  const settings=read(settingsKey),roads=new Map();
+  let stageId=document.documentElement.dataset.cover;
+  const stageFor=(map,climb)=>(map==='fuji'?'fuji-':'')+(climb?'uphill':'downhill');
+  function roadFor(id){
+    const map=stages[id].map;
+    if(!roads.has(map))roads.set(map,map==='haruna'?new TougeCourse():new TougeCourse(map));
+    const road=roads.get(map);
+    return id===stageFor(map,true)?road.reversed():road;
+  }
+  let course=roadFor(stageId);
   const drive=new TougeDrive(course), renderPose=new TougeRenderPose(drive);
-  const recordsKey=()=>course.night?'tofu-touge-haruna-night-v1':'tofu-touge-haruna-v1';
+  const recordsKey=()=>stages[stageId].record;
   let records=read(recordsKey());
   let sound=settings.sound!==false,music=settings.music!==false;
   const savedVolume=value=>Number.isFinite(value)?clamp(value,0,1):1;
@@ -50,34 +69,42 @@
   }
   const songTime=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
   const fmt=n=>Math.round(n).toLocaleString('en-US');
-  const displayDistance=downhill.distance/1000;
-  const stageButtons=document.querySelectorAll('.course-picker button');
+  const mapButtons=document.querySelectorAll('.pass-picker button');
+  const stageButtons=document.querySelectorAll('.direction-picker button');
   let hudMapBounds=null;
-  const startLabel=()=>course.night?'Start ascent':'Start descent';
+  const startLabel=()=>course.direction<0?'Start ascent':'Start descent';
   function showCourse(){
-    const night=course.night,stage=night?'uphill':'downhill';
-    document.body.dataset.stage=stage;
-    for(const button of stageButtons)button.setAttribute('aria-pressed',String(button.dataset.stage===stage));
+    const stage=stages[stageId],climb=course.direction<0;
+    document.body.dataset.stage=stageId;
+    document.documentElement.dataset.cover=stageId;
+    for(const button of mapButtons)button.setAttribute('aria-pressed',String(button.dataset.map===stage.map));
+    stageButtons.forEach((button,index)=>{
+      const id=stageFor(stage.map,index===1);
+      button.dataset.stage=id;
+      button.setAttribute('aria-pressed',String(id===stageId));
+      button.querySelector('span').textContent='· '+stages[id].light;
+    });
     byId('start-btn').children[1].textContent=startLabel();
-    setText('stage-objective',night?'Climb the hairpins from the tofu shop.':'Drift the hairpins of Haruna Pass.');
-    setText('stage-destination',night?'Bring the delivery to the summit.':'Bring the tofu down intact.');
-    setText('course-name',night?'Haruna Reverse':'Haruna Pass');
-    setText('course-light',night?'Night':'Dawn');
-    setText('elevation-label',night?'ELEVATION GAIN':'ELEVATION DROP');
-    setText('hud-course',night?'HARUNA REVERSE':'HARUNA PASS');
-    byId('menu-distance').innerHTML=displayDistance.toFixed(2)+' <small>KM</small>';
+    setText('stage-objective',stage.objective);setText('stage-destination',stage.destination);
+    setText('course-name',stage.name);setText('course-light',stage.light);
+    setText('elevation-label',climb?'ELEVATION GAIN':'ELEVATION DROP');
+    setText('hud-course',stage.name.toUpperCase());
+    byId('hud-course').nextElementSibling.textContent=stage.map==='fuji'?'三国峠':'榛名山';
+    byId('world').setAttribute('aria-label',stage.name+' driving view');
+    byId('menu-distance').innerHTML=(course.distance/1000).toFixed(2)+' <small>KM</small>';
     const elevation=Math.abs(course.sample(course.start).y-course.sample(course.finish).y);
     byId('menu-drop').innerHTML=Math.round(elevation)+' <small>M</small>';
     showRecord();paintMap(byId('menu-map'));
   }
-  function selectStage(stage){
-    const next=stage==='uphill'?downhill.reversed():downhill;
-    if(state!=='menu' || dialog || course===next)return;
+  function selectStage(id){
+    if(state!=='menu' || dialog || stageId===id)return;
     clearEntry();
-    course=next;drive.course=course;drive.reset();renderPose.capture(drive);
-    records=read(recordsKey());settings.stage=stage;write(settingsKey,settings);
+    if(stages[id].map!==stages[stageId].map)retirePass();
+    stageId=id;course=roadFor(id);drive.course=course;drive.reset();renderPose.capture(drive);
+    records=read(recordsKey());settings.stage=id;write(settingsKey,settings);
     showCourse();schedulePass();
   }
+  for(const button of mapButtons)button.addEventListener('click',()=>selectStage(stageFor(button.dataset.map,course.direction<0)));
   for(const button of stageButtons)button.addEventListener('click',()=>selectStage(button.dataset.stage));
   function showRecord(){const el=byId('menu-record');el.hidden=!Number.isFinite(records.time);if(!el.hidden)el.textContent='PERSONAL BEST  '+timeStr(records.time);}
   function paintMap(canvas,local=false) {
@@ -120,9 +147,9 @@
   const tacho=byId('tach'),ticks=Array.from({length:26},(_,i)=>{const el=document.createElement('i');if(i>20)el.className='hot';tacho.append(el);return el;});
   function stateTo(next){
     state=next;document.body.dataset.state=next;byId('hud').hidden=next==='menu'||next==='viewcar';
-    byId('world').classList.toggle('chase-orbit',canOrbit());
+    viewport.classList.toggle('chase-orbit',canOrbit());
     byId('walkaround').hidden=next!=='viewcar';
-    const labels={menu:'MAIN MENU',viewcar:'WALKAROUND',racing:course.night?'UPHILL RUN':'DOWNHILL RUN',countdown:'START GRID',paused:'PAUSED',result:'RUN RESULT'};
+    const labels={menu:'MAIN MENU',viewcar:'WALKAROUND',racing:course.direction<0?'UPHILL RUN':'DOWNHILL RUN',countdown:'START GRID',paused:'PAUSED',result:'RUN RESULT'};
     setText('screen-label',labels[next]);
     refreshSound();
   }
@@ -184,7 +211,7 @@
     byId('walkaround').inert=false;
     if(returnFocus&&focusReturn?.isConnected)focusReturn.focus({preventScroll:true});
     focusReturn=null;
-    resumePreparation?.();schedulePass();
+    preparation?.resume?.();schedulePass();
   }
   const bind=(id,fn)=>byId(id).addEventListener('click',fn);
   function menu(){
@@ -223,6 +250,15 @@
   function checkJob(job){
     if(job!==preparation)throw new DOMException('Graphics preparation superseded','AbortError');
   }
+  function retirePass(){
+    // Keep the input surface stable. Retiring its child canvas frees the
+    // previous mountain's GPU allocations, including offscreen reflections.
+    const canvas=byId('world'),job=preparation;
+    preparation=null;job?.resume?.();
+    canvas.replaceWith(canvas.cloneNode(false));
+    world?.dispose();job?.built?.dispose();
+    world=null;contextLost=false;
+  }
   function postLoadTurn(){
     if(!loadChannel){
       loadChannel=new MessageChannel();
@@ -234,8 +270,8 @@
     do{
       checkJob(job);
       if(document.hidden || (dialog && !loading)){
-        await new Promise(resolve=>{resumePreparation=resolve;});
-        resumePreparation=null;
+        await new Promise(resolve=>{job.resume=resolve;});
+        job.resume=null;
       }else if(!loading && window.requestIdleCallback){
         await new Promise(resolve=>requestIdleCallback(resolve,{timeout:160}));
       }else if(window.scheduler?.yield){
@@ -261,11 +297,11 @@
       const ticket='tofu-world-build';manager.itemStart(ticket);
       const images=artworkReady(manager);
       let pass;
-      try{pass=await TougeWorld.create(byId('world'),course,pause);}
+      try{pass=await TougeWorld.create(byId('world'),course,pause);job.built=pass;}
       finally{manager.itemEnd(ticket);}
       await images;
-      if(preparation!==job){pass.renderer.dispose();checkJob(job);}
-      world=pass;
+      if(preparation!==job){pass.dispose();checkJob(job);}
+      world=pass;job.built=null;
     }
     const pass=world;
     for(;;){
@@ -313,14 +349,17 @@
     closeDialog(false);
     const request={inspect};loading=request;clearInput();if(!inspect)unlockAudio();
     showEntry();
-    resumePreparation?.();
+    preparation?.resume?.();
     try{
       await loadPass();
       if(loading!==request)return;
       world.reset();drive.reset();accumulator=0;prevTime=0;
       if(inspect){
-        // Park by the shrine in daylight and by the shop on the night grid.
-        drive.place(course.night?course.start:course.splits[0]-19);
+        const physical=course.physicalCourse;
+        const station=course.mapId==='fuji'
+          ?course.physicalStation(physical.splits[0]-22)
+          :course.night?course.start:course.splits[0]-19;
+        drive.place(station);
         const p=drive.contact;p.offset=.55;drive.x=p.x+p.rx*p.offset;drive.z=p.z+p.rz*p.offset;
         drive.steerAngle=.048;walkaround.reset();walkaround.render(world,drive,1/60);
         stateTo('viewcar');byId('car-back').focus({preventScroll:true});return;
@@ -336,7 +375,7 @@
   }
   function camera(){
     if(!world)return;chaseOrbit.reset();const name=world.cycleCamera();toast(name+' camera');
-    byId('world').classList.toggle('chase-orbit',canOrbit());
+    viewport.classList.toggle('chase-orbit',canOrbit());
     if(dialog==='pause')setText('camera-setting',name);
   }
   function recover(){
@@ -400,7 +439,7 @@
     const rows=radio.tracks.map((track,i)=>'<button class="radio-track" data-track="'+i+
       '" aria-pressed="false"><span class="track-indicator" aria-hidden="true"></span><span class="track-title">'+
       track.title+'</span><span class="track-genre">'+track.genre+'</span></button>').join('');
-    openDialog('radio','<p class="dialog-kicker">HARUNA PASS</p><h2 id="dialog-title">Pass radio</h2>'+
+    openDialog('radio','<p class="dialog-kicker">'+stages[stageId].name.toUpperCase()+'</p><h2 id="dialog-title">Pass radio</h2>'+
       volumeControls()+'<div id="radio-list" role="group" aria-label="Soundtrack">'+rows+'</div>'+
       '<div class="radio-footer"><span id="radio-status" role="status"></span><span id="radio-time" role="timer" aria-label="Track time"></span><button id="radio-power" class="text-link"></button></div>'+
       '<div class="dialog-buttons"><button id="radio-done" class="primary">'+(driving?'Resume run':'Back')+'</button></div>');
@@ -424,7 +463,7 @@
   bind('radio-btn',openRadio);
   function pauseMenu(){
     const cam=['Chase','Low chase','Bonnet'][world.cameraMode];
-    openDialog('pause','<p class="dialog-kicker">HARUNA PASS</p><h2 id="dialog-title">Run paused</h2>'+
+    openDialog('pause','<p class="dialog-kicker">'+stages[stageId].name.toUpperCase()+'</p><h2 id="dialog-title">Run paused</h2>'+
       '<div class="settings-row"><span>Camera</span><button class="toggle-setting" id="camera-setting">'+cam+'</button></div>'+
       '<div class="settings-row"><button id="radio-setting" class="radio-setting" aria-haspopup="dialog"><span>Pass radio</span><strong>'+radio.track.title+' ›</strong></button><button id="music-setting" class="toggle-setting" aria-label="Music" aria-pressed="'+music+'">'+(music?'ON':'OFF')+'</button></div>'+volumeControls()+
       '<div class="dialog-buttons"><button id="resume" class="primary">Resume run</button><button id="restart" class="secondary">Restart</button></div>'+
@@ -477,8 +516,8 @@
     const pb=success&&(!Number.isFinite(records.time)||drive.time<records.time);
     if(success){if(pb)records.time=drive.time;records.score=Math.max(Number(records.score)||0,drive.score);write(recordsKey(),records);}
     const splits=drive.splitTimes.map((t,i)=>'<span>S'+(i+1)+' '+timeStr(t-(drive.splitTimes[i-1]||0))+'</span>').join('');
-    const resultCourse=course.night?'HARUNA REVERSE':'HARUNA PASS';
-    const resultTitle=success?(course.night?'Summit delivery complete':'Tofu delivered'):'Cargo lost';
+    const resultCourse=stages[stageId].name.toUpperCase(),displayDistance=course.distance/1000;
+    const resultTitle=success?(course.direction<0?'Summit delivery complete':'Tofu delivered'):'Cargo lost';
     openDialog('result','<p class="dialog-kicker">'+resultCourse+' / '+(success?(pb?'PERSONAL BEST':'FINISH'):'DELIVERY FAILED')+'</p><h2 id="dialog-title">'+resultTitle+'</h2><p class="result-time">'+timeStr(drive.time)+'</p><dl class="result-list"><div><dt>Drift score</dt><dd>'+fmt(drive.score)+' pts</dd></div><div><dt>Tofu condition</dt><dd>'+drive.integrity+'%</dd></div><div><dt>'+(success?'Best time':'Distance covered')+'</dt><dd>'+(success?timeStr(records.time):(drive.progress*displayDistance).toFixed(2)+' km')+'</dd></div></dl><div class="result-sector">'+splits+'</div><div class="dialog-buttons"><button class="primary" id="again">Run again</button><button class="secondary" id="done">Main menu</button></div>',false);
     bind('again',begin);bind('done',menu);
   }
@@ -512,11 +551,14 @@
   function gamepad(){
     let pad;try{pad=Array.from(navigator.getGamepads?.()||[]).find(p=>p?.connected&&p.mapping==='standard');}catch{return;}
     if(!pad){previousButtons.clear();return;}
-    for(const i of [0,1,3,9,14,15]){
+    for(const i of [0,1,3,9,12,13,14,15]){
       const held=!!pad.buttons[i]?.pressed,edge=held&&!previousButtons.get(i);previousButtons.set(i,held);
       if(!edge)continue;
       if(dialog==='radio'){if(i===1||i===9)dismiss();else if(i===15)radio.select(radio.nextIndex);continue;}
-      if(state==='menu'&&!dialog&&(i===14||i===15)){selectStage(i===14?'downhill':'uphill');continue;}
+      if(state==='menu'&&!dialog&&i>=12){
+        const map=i<14?(i===12?'haruna':'fuji'):stages[stageId].map;
+        selectStage(stageFor(map,i<14?course.direction<0:i===15));continue;
+      }
       if(state==='viewcar'){if(i===1 || i===9)leaveCar();continue;}
       if(i===0 && state==='racing' && !dialog) handbrakeTap=true;
       if(dialog==='result'&&i===0){begin();continue;}
@@ -550,7 +592,8 @@
       if(code==='Escape' && loading){event.preventDefault();clearEntry();return;}
       if(event.target.closest?.('.course-picker')&&(code==='ArrowLeft'||code==='ArrowRight')){
         event.preventDefault();const index=code==='ArrowLeft'?0:1;
-        selectStage(stageButtons[index].dataset.stage);stageButtons[index].focus();return;
+        const buttons=event.target.closest('.pass-picker')?mapButtons:stageButtons;
+        buttons[index].click();buttons[index].focus();return;
       }
       if(code==='Enter'&&!event.repeat&&!loading && !event.target.closest?.('button')){event.preventDefault();begin();}
       return;
@@ -587,7 +630,7 @@
   window.addEventListener('blur',()=>{clearInput();pause();});
   document.addEventListener('visibilitychange',()=>{
     if(document.hidden){clearInput();pause();}
-    else {resumePreparation?.();schedulePass();}
+    else {preparation?.resume?.();schedulePass();}
     if(dialog==='radio')audio.setMusicPreview(!document.hidden);
   });
   window.addEventListener('resize',()=>{
@@ -595,15 +638,15 @@
     world?.resize();
     if(state==='menu')paintMap(byId('menu-map'));else if(state==='viewcar')walkaround.pending=2;else hud();
   });
-  byId('world').addEventListener('webglcontextlost',event=>{
+  viewport.addEventListener('webglcontextlost',event=>{
     const inPass=loading || state!=='menu';
-    event.preventDefault();contextLost=true;preparation=null;resumePreparation?.();
-    world?.renderer.dispose();world=null;clearInput();clearEntry();
+    event.preventDefault();contextLost=true;preparation?.resume?.();preparation=null;
+    world?.dispose();world=null;clearInput();clearEntry();
     if(inPass)showError();
-  });
-  byId('world').addEventListener('webglcontextrestored',()=>{
+  },true);
+  viewport.addEventListener('webglcontextrestored',()=>{
     contextLost=false;if(dialog==='error')menu();else schedulePass();
-  });
+  },true);
   function driveTelemetry() {
     return {
       rpm: drive.rpm,
@@ -631,7 +674,7 @@
     setText('boost',(drive.boost*.35).toFixed(2)+' BAR');
     const sector=Math.min(2,drive.sector);setText('sector','S'+(sector+1)+' / '+course.sectors[sector].toUpperCase());
     byId('condition').firstChild.nodeValue=String(drive.integrity);byId('cargo-meter').firstElementChild.style.width=drive.integrity+'%';
-    byId('progress-fill').style.width=drive.progress*100+'%';setText('remaining',((1-drive.progress)*displayDistance).toFixed(2)+(course.night?' KM TO SUMMIT':' KM TO DELIVERY'));
+    byId('progress-fill').style.width=drive.progress*100+'%';setText('remaining',((1-drive.progress)*course.distance/1000).toFixed(2)+(course.direction<0?' KM TO SUMMIT':' KM TO DELIVERY'));
     const threshold=Math.round(drive.rpm/8000*ticks.length);for(let i=0;i<ticks.length;i++)ticks[i].classList.toggle('lit',i<threshold);
     byId('chain').hidden=drive.chain<3||state==='result';
     if(!byId('chain').hidden){
@@ -665,7 +708,7 @@
       drive.engineLoad+=(input.throttle*.49-drive.engineLoad)*(1-Math.exp(-dt*9));
       count-=dt;
       if(count>0){setText('count-number',String(Math.min(3,Math.ceil(count))));}
-      else{renderPose.capture(drive);stateTo('racing');audio.event('go');setText('count-number','GO');setText('count-label',course.night?'HARUNA NIGHT ASCENT':'HARUNA DOWNHILL');}
+      else{renderPose.capture(drive);stateTo('racing');audio.event('go');setText('count-number','GO');setText('count-label',stages[stageId].name.toUpperCase());}
     }else{
       if(raw>dt)drive.time+=raw-dt;
       accumulator+=dt;
