@@ -285,15 +285,15 @@
       // UV rows already follow the physical bow. This is the clear opening
       // inside the ceramic print, measured separately from the outer glass.
       function opening(inset=0){
-        const path=new Path2D(),left=51+inset,right=w-left,top=50+inset,base=461-inset;
-        path.moveTo(left+52,top);path.lineTo(right-52,top);
-        path.bezierCurveTo(right-20,top,right,top+23,right,top+52);
+        const path=new Path2D(),left=57+inset,right=w-left,top=54+inset,base=466-inset;
+        path.moveTo(left+46,top);path.lineTo(right-46,top);
+        path.bezierCurveTo(right-16,top,right,top+22,right,top+51);
         path.lineTo(right,base-56);
-        path.bezierCurveTo(right,base-23,right-14,base-9,right-53,base-5);
+        path.bezierCurveTo(right,base-25,right-19,base-11,right-62,base-5);
         path.bezierCurveTo(w*.73,base-1,w*.62,base,w*.5,base);
-        path.bezierCurveTo(w*.38,base,w*.27,base-1,left+53,base-5);
-        path.bezierCurveTo(left+14,base-9,left,base-23,left,base-56);
-        path.lineTo(left,top+52);path.bezierCurveTo(left,top+23,left+20,top,left+52,top);
+        path.bezierCurveTo(w*.38,base,w*.27,base-1,left+62,base-5);
+        path.bezierCurveTo(left+19,base-11,left,base-25,left,base-56);
+        path.lineTo(left,top+51);path.bezierCurveTo(left,top+22,left+16,top,left+46,top);
         path.closePath();return path;
       }
       const clear=opening(),ceramic=new Path2D();
@@ -306,18 +306,22 @@
 
       // The upper conductors are almost level. The lower ones sweep up at
       // their terminals with the curved sill. Both busbars join every trace.
-      const left=55,right=w-left,rows=16;
-      const wire=(i,x)=>{
-        const t=i/(rows-1),a=(2*x-w)/(right-left);
-        return 99+337*(t+.087*t*(1-t))-(6+5*t)*a*a;
-      };
-      c.strokeStyle='rgba(100,76,52,.82)';c.lineWidth=.68;c.beginPath();
+      const rows=16,terminals=[];
+      c.strokeStyle='rgba(134,97,68,.92)';c.lineWidth=.80;c.beginPath();
       for(let i=0;i<rows;i++){
-        const edge=wire(i,left),middle=wire(i,w*.5);
-        c.moveTo(left,edge);c.quadraticCurveTo(w*.5,2*middle-edge,right,edge);
+        const t=i/(rows-1);
+        const middle=101+331*(t+.085*t*(1-t));
+        // The glass itself supplies most of the bow. Only the additional
+        // sweep of the printed wire belongs in its UV map.
+        const edge=middle-(4+10*t),left=61+4*t*t*t*t;
+        c.moveTo(left,edge);c.quadraticCurveTo(w*.5,2*middle-edge,w-left,edge);
+        terminals.push([left,edge]);
       }
       c.stroke();c.lineWidth=1.45;c.beginPath();
-      for(const x of [left,right]){c.moveTo(x,wire(0,x));c.lineTo(x,wire(rows-1,x));}
+      for(const side of [0,1])terminals.forEach(([left,y],i)=>{
+        const x=side?w-left:left;
+        if(i===0)c.moveTo(x,y);else c.lineTo(x,y);
+      });
       c.stroke();c.restore();
       // Small ceramic maker's etch in the lower corner, under the outer surface.
       c.save();c.translate(w-95,h-32);c.fillStyle='rgba(215,218,203,.63)';

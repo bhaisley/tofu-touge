@@ -45,12 +45,21 @@ async function check(){
         else if(v===0)edges[2].push([-u,i]);
         else if(u===0)edges[3].push([v,i]);
       }
-      const points=[...rows.values()].sort((a,b)=>a.z-b.z);
+      const points=[...rows.values()].sort((a,b)=>b.v-a.v);
       const rakes=points.slice(1).map((p,i)=>THREE.MathUtils.radToDeg(Math.atan2(points[i].y-p.y,p.z-points[i].z)));
       const header=points[0],sill=points.at(-1),dy=sill.y-header.y,dz=sill.z-header.z;
       const paneHeight=Math.hypot(dy,dz);
       glass.computeBoundingBox();
       const width=glass.boundingBox.max.x-glass.boundingBox.min.x;
+      const headerX=edges[0].map(([,i])=>position.getX(i));
+      const headerWidthFraction=(Math.max(...headerX)-Math.min(...headerX))/width;
+      const rearAxle=w.car.axles.rear;
+      const paint=w.car.body.getObjectByName('paint').geometry.attributes.position;
+      let roofSheetY=-Infinity;
+      for(let i=0;i<paint.count;i++){
+        const x=Math.abs(paint.getX(i));
+        if(x>.10 && x<.50)roofSheetY=Math.max(roofSheetY,paint.getY(i));
+      }
       const outline=edges.flatMap(edge=>edge.sort((a,b)=>a[0]-b[0]).map(([,i])=>new THREE.Vector3().fromBufferAttribute(position,i)));
       function cut(poly,axis,station){
         const hits=[];
@@ -177,14 +186,34 @@ async function check(){
         }));
       }
       return {minRake:Math.min(...rakes),maxRake:Math.max(...rakes),sillRake:rakes.at(-1),
-        paneHeight,sillY:sill.y,width,sillBow,mountedBreadth,mountedBow,headrestGap,pairedHits,bumperBands,plate,
+        paneHeight,sillY:sill.y,centerDrop:-dy,width,headerWidthFraction,roofSheetY,
+        headerAheadOfAxle:rearAxle-header.z,sillBehindAxle:sill.z-rearAxle,
+        sillBow,mountedBreadth,mountedBow,headrestGap,pairedHits,bumperBands,plate,
         stopMin:stopBounds.min.toArray(),stopMax:stopBounds.max.toArray(),show,road,
         chase:chaseLights(0),lowChase:chaseLights(1),error:gl.getError()};
     });
     console.log(JSON.stringify(report,null,2));
     assert(report.minRake>1 && report.maxRake<50 && report.sillRake>8,'backlight must descend into the deck without rolling over');
-    assert(report.paneHeight>.58 && report.paneHeight<.66 && report.sillY>.95,'shortened backlight must meet the raised sill');
-    assert(report.width>1.35 && report.sillBow.every(s=>s>.02 && s<.055),'the broad lower aperture must retain its physical bow');
+    // Toyota Japan's GR86 catalogue, pp. 6 and 11. Scaling the oblique view by
+    // the 2.575 m wheelbase puts the centre header and sill about 0.37 m on
+    // either side of the rear axle. These are tolerances for the visible opening.
+    // https://toyota.jp/pages/contents/request/webcatalog/86/gr86_main.pdf
+    // Page 11 specifies 1.280 m to the roof sheet. The lateral sample excludes the fin.
+    assert(Math.abs(report.roofSheetY-1.280)<.016,'the painted roof crown must retain the donor roof height');
+    assert(report.headerAheadOfAxle>.24 && report.headerAheadOfAxle<.51
+      && report.sillBehindAxle>.23 && report.sillBehindAxle<.49,
+      'the glass header and sill must span the rear axle at the donor mounting positions');
+    assert(report.paneHeight>.66 && report.paneHeight<.89 && report.centerDrop>.14 && report.centerDrop<.28
+      && report.sillY>.95 && report.sillY<1.09, 'the backlight must descend to the raised deck over the donor glass length');
+    // In Toyota UK's 2,560 px rear press photo (image 160) the dark aperture
+    // spans about 648 px to the 842 px between tyres on a 1.550 m stock track.
+    // The kit widens the wheel arches, so their outer width is a poor scale here.
+    // https://media.toyota.co.uk/images/gr86-exterior-static-2022-current/
+    assert(report.width>1.09 && report.width<1.31 && report.headerWidthFraction>.73 && report.headerWidthFraction<.92,
+      'the maximum aperture width and header taper must follow the donor glass');
+    // The overhead view shows the centre aft of both lower corners. The two
+    // sides give approximately 5–7% of the width when sampled at ±40% span.
+    assert(report.sillBow.every(s=>s>.02 && s<.085),'the broad lower aperture must retain its physical bow');
     assert(report.mountedBreadth>.93 && report.mountedBow.every(s=>Math.abs(s)<.012),'the mounted rear sill must stay broad and nearly level');
     assert(report.pairedHits>=5 && report.headrestGap>.055,'the cage diagonal must clear the back of the driver headrest');
     for(const {side,z,shades} of report.bumperBands){

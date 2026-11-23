@@ -548,63 +548,74 @@
   }
 
   function ducktail(api,back) {
-    const {b,profile,rearDeck}=api;
-    const aftWidth=.755,fullWidth=profile.halfWidth(profile.rearZ);
-    const radius=u=>.010*(1-smooth(.75,1,Math.abs(u)));
+    const {b,profile,rearDeck,tube}=api;
+    const aftWidth=.755,rearZ=profile.rearZ,fullWidth=profile.halfWidth(rearZ);
+    const radius=u=>.0056*(1-smooth(.85,1,Math.abs(u)));
+    const hermite=(from,to,m0,m1,t)=>
+      mix(from,to,t*t*(3-2*t))+t*(1-t)*(m0*(1-t)-m1*t);
+    const deckPoint=(q,z)=>rearDeck.deck(z,q*rearDeck.outerU(z));
+    const startZ=rearDeck.start,neckCrown=clamp(deckPoint(0,startZ)[1]-.061,.899,.952);
     const profiles=new Map();
     function column(x){
       if(profiles.has(x))return profiles.get(x);
-      const a=Math.abs(x)/aftWidth,q=x/fullWidth;
-      const base=rearDeck.deck(profile.rearZ,q);
+      const dx=Math.abs(x),q=x/fullWidth;
+      const base=deckPoint(q,rearZ);
       const landing=faceAtX(back,x,base[1]-.012);
-      const reach=1-smooth(.57,.827,a);
-      const recess=.016*smooth(.65,.82,a)*(1-smooth(.936,1,a));
-      const endZ=Math.max(profile.rearZ,landing[2]+.048*reach-recess);
-      const z0=profile.rearZ-.004;
-      const prev=rearDeck.deck(z0,q*rearDeck.outerU(z0));
-      const onset=1.622+.087*Math.min(a,1)**2;
-      const height=.1103*(1-.23*smooth(.36,.71,a))*(1-smooth(.605,1,a));
-      const span=endZ-onset,rise=clamp((profile.rearZ-onset)/span,0,1);
-      const lipLength=Math.max(.00001,endZ-profile.rearZ);
-      const entry=base[1]+height*rise*rise,tip=landing[1]+height;
-      const secant=(tip-entry)/lipLength;
-      const incoming=(base[1]-prev[1])/.004+2*height*rise/span;
-      const direction=Math.sign(secant);
-      const tangent=direction*Math.min(2.65*Math.abs(secant),Math.max(0,incoming*direction));
-      const result={x,a,q,landing,endZ,onset,height,span,lipLength,entry,tip,
-        entryTangent:lipLength*tangent,tipTangent:lipLength*secant*.08};
+      landing[0]=x;
+      // The kit has a broad, nearly level trailing blade. Short bevels turn
+      // its ends into the lid above the combination lamps.
+      const blade=1-smooth(.536,.719,dx),endReturn=1-smooth(.565,.682,dx);
+      const lampSeat=smooth(.630,.695,dx)*(1-smooth(.804,fullWidth,dx));
+      const endZ=Math.max(rearZ,mix(landing[2]+.046*endReturn,
+        lampSeat?faceAtX(back,x,.829)[2]:landing[2],lampSeat));
+      const lampCrown=smooth(.47,.64,dx)*(1-smooth(.765,fullWidth,dx));
+      const shoulder=mix(landing[1],.833,lampCrown);
+      const crown=Math.min(1,dx/.67);
+      const tip=mix(shoulder,.955-.009*crown*crown,blade);
+      const neck=startZ+.225+.017*smooth(.38,.73,dx);
+      const opening=deckPoint(q,startZ)[1];
+      const openingSlope=(deckPoint(q,startZ+.001)[1]-deckPoint(q,startZ-.001)[1])/.002;
+      const neckY=mix(deckPoint(q,neck)[1],neckCrown-.021*Math.min(1,dx/.70)**2,1-smooth(.70,.82,dx));
+      const secant=(tip-neckY)/(endZ-neck);
+      const neckSlope=Math.min(0,.43*secant),tipSlope=secant*(secant>0?1.68:.85);
+      const flank=smooth(.43,.651,dx),exitSlope=.87*(tip-opening)/(endZ-startZ);
+      const result={x,q,base,landing,endZ,neck,neckY,opening,openingSlope,neckSlope,tip,tipSlope,
+        flank,exitSlope,shape:1-smooth(.756,fullWidth,dx)};
       profiles.set(x,result);
       return result;
     }
     function topAt(c,z){
-      if(z<=profile.rearZ){
-        const p=rearDeck.deck(z,c.q*rearDeck.outerU(z));
-        const rise=clamp((z-c.onset)/c.span,0,1);
-        p[1]+=c.height*rise*rise;
-        return p;
-      }
-      // Keep the whole rolled stamping monotonic through its trailing edge;
-      // independent crown and lip curves produced an extra crease in the paint.
-      const t=clamp((z-profile.rearZ)/c.lipLength,0,1);
-      const y=mix(c.entry,c.tip,t*t*(3-2*t))+
-        t*(1-t)*(c.entryTangent*(1-t)-c.tipTangent*t);
-      return [c.x,y,z];
+      const run=c.neck-startZ,tail=c.endZ-c.neck;
+      const blade=z<=c.neck?hermite(c.opening,c.neckY,c.openingSlope*run,c.neckSlope*run,(z-startZ)/run):
+        hermite(c.neckY,c.tip,c.neckSlope*tail,c.tipSlope*tail,(z-c.neck)/tail);
+      // Outside the blade, a single shoulder slope runs down from the
+      // backlight to the lamp. The deck never levels off at the lid edge.
+      const span=c.endZ-startZ;
+      const shoulder=hermite(c.opening,c.tip,c.openingSlope*span,c.exitSlope*span,(z-startZ)/span);
+      const cap=clamp((z-rearZ)/Math.max(.00001,c.endZ-rearZ),0,1);
+      const p=z<=rearZ?deckPoint(c.q,z):[c.x,mix(c.base[1],c.landing[1],smooth(0,1,cap)),z];
+      p[1]=mix(p[1],mix(blade,shoulder,c.flank),c.shape);
+      return p;
     }
     const rearSkin=(u,v)=>{
       const c=column(u*aftWidth),p=blend(c.landing,topAt(c,c.endZ),v);
-      const sideFade=1-smooth(.72,1,c.a);
-      // A cubic return below the lip meets its rolled face with a vertical tangent.
-      p[2]+=(c.endZ-c.landing[2])*v*v*(1-v)*sideFade;
+      // The lower part of the boot tucks back under the kit's rolled lip.
+      // The shallow, upright nose of the blade carries the high stop lamp.
+      const fold=.18*v*(2-v)+.82*smooth(.30,.78,v);
+      p[2]=mix(c.landing[2],c.endZ,mix(v,fold,1-smooth(.62,.719,Math.abs(c.x))));
       p[1]-=radius(u)*smooth(.81,1,v);
       const x=Math.abs(p[0]);
-      p[2]-=.022*smooth(.466,.563,x)*(1-smooth(.666,.744,x))*
-        (1-smooth(.825,.854,p[1]))*(1-smooth(.78,1,v));
+      if(x>.535 && p[1]<.846){
+        const socket=smooth(.535,.571,x)*(1-smooth(.813,fullWidth,x))*(1-smooth(.830,.846,p[1]));
+        const clearance=faceAtX(back,p[0],p[1])[2]+.0008;
+        p[2]-=Math.max(0,p[2]-clearance)*socket;
+      }
       return p;
     };
 
     // A physical slot in the white face permits the lens to sit behind the
     // stamping and keeps the narrow high-mounted stop lamp unbroken at oblique angles.
-    const center=.903,halfWidth=.164,halfHeight=.0103,corner=.0074;
+    const center=.923,halfWidth=.164,halfHeight=.0103,corner=.0074;
     const slotHeight=x=>{
       const dx=Math.max(0,Math.abs(x)-(halfWidth-corner));
       return halfHeight-corner+Math.sqrt(Math.max(0,corner*corner-dx*dx));
@@ -626,12 +637,12 @@
     };
     const aperture=rails(halfWidth,corner);
     const stations=(a,c,n)=>Array.from({length:n+1},(_,i)=>mix(a,c,i/n));
-    const shoulder=stations(halfWidth,aftWidth,47),edge=stations(aftWidth,fullWidth,10);
+    const shoulder=stations(halfWidth,aftWidth,42),edge=stations(aftWidth,fullWidth,9);
     const outside=shoulder.slice(1).concat(edge.slice(1));
     const xs=outside.map(x=>-x).reverse().concat(aperture,outside);
     // The preceding rear-window reveal has 68 transverse spans and both
     // quarter tops have five. Carry every vertex of those polylines into this row.
-    const startZ=rearDeck.start,foot=rearDeck.footU(startZ),outer=rearDeck.outerU(startZ);
+    const foot=rearDeck.footU(startZ),outer=rearDeck.outerU(startZ);
     const startWidth=profile.halfWidth(startZ)*outer;
     const sill=stations(-outer,-foot,5).slice(0,-1).concat(stations(-foot,foot,68),stations(foot,outer,5).slice(1));
     const incoming=sill.map(a=>rearDeck.deck(startZ,a)),opening=[incoming[0]];
@@ -643,7 +654,7 @@
       for(let i=begin+1;i<=end;i++)opening[i]=blend(incoming[j-1],incoming[j],(i-begin)/(end-begin));
       begin=end;
     }
-    const bodyRows=38,capRows=12,roundRows=10,rows=bodyRows+capRows+roundRows;
+    const bodyRows=32,capRows=9,roundRows=7,rows=bodyRows+capRows+roundRows;
     // One skin runs from the lower backlight to the rolled trailing edge.
     // All adjoining patches share their stations, including the two shoulders.
     b.patch('paint',xs.length-1,rows,(u,v)=>{
@@ -661,10 +672,17 @@
       const angle=(row-bodyRows-capRows)*Math.PI/(2*roundRows),p=topAt(c,c.endZ);
       p[1]-=r*(1-Math.cos(angle));p[2]-=r*(1-Math.sin(angle));return p;
     },(u,v)=>v>(bodyRows+capRows)/rows?[0,1,1]:up,pearl);
+    const quarter=shoulder.concat(edge.slice(1));
+    const lowerSlot=heightAt(halfWidth/aftWidth,center-slotHeight(halfWidth));
+    const upperSlot=heightAt(halfWidth/aftWidth,center+slotHeight(halfWidth));
     for(const side of [-1,1]){
-      b.patch('paint',shoulder.length-1,14,(t,v)=>{
-        const x=side*shoulder[Math.round(t*(shoulder.length-1))];
-        return rearSkin(x/aftWidth,v);
+      b.patch('paint',quarter.length-1,14,(t,v)=>{
+        const x=side*quarter[Math.round(t*(quarter.length-1))];
+        // Carry the two aperture edges and their six rows into the solid
+        // quarter. A hanging vertex on this folded face opens a visible crack.
+        const row=Math.round(14*v),shared=row<=6?lowerSlot*row/6:
+          row<=8?mix(lowerSlot,upperSlot,(row-6)/2):mix(upperSlot,1,(row-8)/6);
+        return rearSkin(x/aftWidth,mix(shared,v,smooth(halfWidth,.33,Math.abs(x))));
       },rear,pearl);
     }
     for(const high of [false,true]){
@@ -673,6 +691,37 @@
         const u=x/aftWidth,limit=heightAt(u,center+(high?1:-1)*slotHeight(x));
         return rearSkin(u,high?mix(limit,1,v):v*limit);
       },rear,pearl);
+    }
+
+    // Each luggage opening runs from the lower glass corner onto this skin,
+    // turns over the lip and meets the lamp gasket. Follow its measured
+    // incoming position and tangent so the two stampings share one shutline.
+    const edgeX=.674,edgeEnd=column(edgeX).endZ,span=edgeEnd-startZ;
+    const joint=rearDeck.shutline(1,1),prior=rearDeck.shutline(1,.997);
+    const tangent=(joint[0]-prior[0])/(joint[2]-prior[2]);
+    const edgeAt=z=>hermite(joint[0],edgeX,span*tangent,.117*span,clamp((z-startZ)/span,0,1));
+    const r=radius(edgeX/aftWidth),finish=heightAt((edgeX-.0035)/aftWidth,.8285);
+    for(const s of [-1,1]){
+      const path=[];
+      for(let k=0;k<=36;k++){
+        const z=mix(startZ,edgeEnd,k/36),x=s*edgeAt(z);
+        const lateral=z<=rearZ?x*fullWidth/(profile.halfWidth(z)*rearDeck.outerU(z)):x;
+        const rail=column(lateral),p=topAt(rail,z);
+        if(z>rearZ)p[2]-=radius(lateral/aftWidth)*smooth(.42,1,(z-rearZ)/(rail.endZ-rearZ));
+        p[1]+=.0009;path.push(p);
+      }
+      for(let k=1;k<=6;k++){
+        const theta=k*Math.PI/12,p=topAt(column(s*edgeX),edgeEnd);
+        p[1]+=.0009*Math.cos(theta)-r*(1-Math.cos(theta));
+        p[2]+=.0009*Math.sin(theta)-r*(1-Math.sin(theta));
+        path.push(p);
+      }
+      for(let k=1;k<=8;k++){
+        const t=k/8,x=edgeX-.0035*smooth(0,1,t);
+        const p=rearSkin(s*x/aftWidth,mix(1,finish,t));
+        p[2]+=.0009;path.push(p);
+      }
+      tube(b,'rubber',path,.0018,0x424846,6);
     }
     const stop=(x,y,proud=0)=>{
       const u=x/aftWidth,p=rearSkin(u,heightAt(u,center+y));p[2]+=proud;return p;

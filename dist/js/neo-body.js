@@ -9,7 +9,7 @@
   const pi = Math.PI, up=[0,1,0], down=[0,-1,0], forward=[0,0,-1], back=[0,0,1];
   const {pandaTrim}=N;
   const white=0xeceeea, flare=0x191b1e, weatherstrip=0x161a1d;
-  const frontAxle=-1.320, rearAxle=1.255, radius=.316, frontCab=-.790, backCab=1.514;
+  const frontAxle=-1.320, rearAxle=1.255, radius=.316, frontCab=-.790, backCab=1.635;
 
   // Shape-preserving tangents keep highlights continuous across the roof stations.
   function curve(rows) {
@@ -34,28 +34,45 @@
   const roofSide=curve([[-.79,.756],[-.72,.791],[-.48,.954],[-.26,1.095],[-.075,1.181],[.08,1.226],
     [.29,1.249],[.46,1.245],[.65,1.223],[.84,1.169],[1.04,1.094],[1.25,.996],[1.42,.916],[1.514,.871]]);
   const roofWidth=curve([[-.79,.799],[-.62,.773],[-.27,.693],[0,.639],[.30,.617],
-    [.61,.622],[.88,.649],[1.16,.707],[1.39,.776],[1.514,.821]]);
+    [.61,.622],[.88,.651],[1.15,.707],[1.35,.760],[1.51,.801],[backCab,.824]]);
   const roofCrown=curve([[-.79,.027],[-.48,.048],[-.12,.053],[.26,.048],[.58,.050],
     [.86,.057],[1.17,.041],[1.38,.022],[1.514,.010]]);
   const glassBow=curve([[-.79,-.038],[-.61,-.077],[-.19,-.090],[.05,-.060],
-    [.31,0],[.67,.040],[1.04,.060],[1.23,.048],[1.39,.022],[1.514,0]]);
-  const sillGlass=curve([[-.633,.833],[-.54,.824],[-.23,.830],[.13,.84],[.46,.854],
-    [.66,.874],[.84,.916],[1.008,.980]]);
-  const headGlass=curve([[-.633,.833],[-.54,.884],[-.34,1.018],[-.10,1.134],[.13,1.190],
-    [.36,1.203],[.55,1.187],[.76,1.142],[.92,1.075],[1.008,.980]]);
+    [.31,0],[.67,.040],[1.04,.060],[1.23,.048],[1.39,.028],[1.55,.011],[backCab,0]]);
+  // The fixed quarter light stays nearly level along the belt, then turns
+  // up in a short radius to meet the descending roof rail ahead of the axle.
+  const sideGlassStart=-.633,sideGlassEnd=.969;
+  const sillGlass=curve([[sideGlassStart,.833],[-.54,.829],[-.23,.838],[.13,.849],[.46,.864],
+    [.65,.874],[.77,.881],[.836,.892],[.893,.913],[.936,.947],[.959,.975],[sideGlassEnd,1.001]]);
+  const headGlass=curve([[sideGlassStart,.833],[-.54,.884],[-.34,1.018],[-.10,1.134],[.13,1.187],
+    [.36,1.195],[.55,1.177],[.71,1.138],[.855,1.076],[.932,1.035],[.960,1.016],[sideGlassEnd,1.001]]);
   const archSpec=z=>({z,r:z<0?.357:.352,h:z<0?.352:.351,top:z<0?.082:.093});
   const arches=[archSpec(frontAxle),archSpec(rearAxle)];
   const floorY=.146;
-  const glassHeader=a=>.748+.059*a*a;
+  const glassHeader=a=>.810+.049*a*a;
   // The mounted pane sweeps aft at the center. Its broad lower span meets
   // the deck at nearly one height before turning up into the short corners.
   const glassSill=a=>{
-    const r=a*a;
-    return 1.318-r*(.060+.018*r);
+    const r=a*a,center=Math.max(0,1-r/.54);
+    return 1.552-r*(.090+.024*r)+.024*center*center;
   };
-  const canopyLanding=a=>mix(1.426-.022*a*a,backCab,smooth(.858,1,a));
+  const glassRow=v=>.42*v+.58*v*v*(3-2*v);
+  const glassStation=(a,t)=>mix(glassHeader(a),glassSill(a),t);
+  const sailStations=[sideGlassEnd];
+  for(let i=1;i<=50;i++){
+    const z=glassStation(1,glassRow(i/50));
+    if(z>sideGlassEnd)sailStations.push(z);
+  }
+  for(let i=1;i<=7;i++)sailStations.push(mix(glassSill(1),backCab,i/7));
+  const sideCount=(from,to)=>from===sideGlassEnd&&to===backCab?sailStations.length-1:Math.max(3,Math.ceil((to-from)/.020));
+  const sideStation=(from,to,u)=>{
+    if(from===sideGlassEnd&&to===backCab)return sailStations[Math.round(u*(sailStations.length-1))];
+    return mix(from,to,to===sideGlassEnd?1-(1-u)**1.36:u);
+  };
   const bootCrown=curve([[.82,0],[1.08,.014],[1.29,.052],[1.405,.063],
     [1.49,.059],[1.60,.041],[1.71,.012],[1.78,0]]);
+  const sailCrown=curve([[.83,0],[1.10,.015],[1.31,.067],[1.46,.105],
+    [1.55,.129],[1.60,.132],[1.67,.122],[1.76,.084],[1.86,.025],[1.96,0]]);
 
   function cutHeight(z) {
     for (const arch of arches) {
@@ -95,28 +112,28 @@
       const f=extent(z,profile.frontZ,frontCab,.16),quarter=extent(z,.67,profile.rearZ,.24);
       const inner=mix(.61,.72,smooth(-1.88,-.85,z));
       const hoodCrest=.012*bell((a-inner)/.067)+.021*bell((a-.875)/.115)-.005*bell((a-.52)/.13);
-      const haunch=.019*bell((a-.87)/.083);
+      const haunch=.014*bell((a-.87)/.103);
       // The rear wing rolls up just outside the trunk shutline. A shallow
       // pressed channel separates its highlight from the flatter boot lid.
       const crest=mix(.800,.916,smooth(1.13,1.89,z));
-      const stamp=extent(z,1.075,1.940,.20)*(.014*bell((a-crest)/.073)-.0035*bell((a-crest+.063)/.032));
-      p[1]+=(hoodCrest*f+haunch*quarter+stamp)*(1-smooth(.925,1,a))+bootCrown(z)*(1-.42*a**4);
+      const stamp=extent(z,1.075,1.940,.20)*(.009*bell((a-crest)/.094)-.0016*bell((a-crest+.075)/.047));
+      p[1]+=(hoodCrest*f+haunch*quarter+stamp)*(1-smooth(.925,1,a))+bootCrown(z)*(1-.42*a**4)
+        +sailCrown(z)*(1-.92*smooth(.54,1.02,a));
       return p;
     }
     const footU=z=>.93-.018*bell((z+.45)/.42)-.012*bell((z-1.30)/.29);
     const foot=(s,z)=>deck(z,s*footU(z));
-    const aftCorrection=profile.halfWidth(backCab)*footU(backCab)-roofWidth(backCab);
-    const widthAt=z=>roofWidth(z)+aftCorrection*smooth(1.02,backCab,z)
-      +.021*extent(z,.802,1.364,.16);
+    const widthAt=z=>z<1.46?roofWidth(z):mix(roofWidth(z),profile.halfWidth(z)*footU(z),smooth(1.46,backCab,z));
     const roofAt=(z,a)=>{
       const rail=extent(z,-.08,.72,.16);
       return roofSide(z)+roofCrown(z)*(1-a*a)
-        +rail*(.007*bell((a-.62)/.20)-.004*bell(a/.26)-.002*bell((a-.916)/.023));
+        +rail*(.007*bell((a-.62)/.20)-.004*bell(a/.26)-.002*bell((a-.916)/.023))
+        -.0131*smooth(-.22,.12,z);
     };
     const rearZ=(z,a)=>z+glassBow(z)*(1-a*a);
-    const blendStart=.600;
-    // Retain the original fastback over the pane. The painted reveal takes
-    // over at the glass sill and blends into the fixed trunk panel.
+    const blendStart=.525;
+    // In the ZN8 side elevation the rear glass falls in one shallow sweep.
+    // A second tangent-matched span turns its painted reveal onto the trunk.
     const curves=new Map();
     const hermite=(t,y0,y1,m0,m1)=>{
       const t2=t*t,t3=t2*t;
@@ -125,35 +142,23 @@
     function backGlassHeight(z,a,x,physical) {
       let rail=curves.get(a);
       if(!rail){
-        const landing=canopyLanding(a);
-        const start=rearZ(blendStart,a),end=rearZ(landing,a),span=end-start;
-        const finishX=a*widthAt(landing);
-        rail={start,span,y0:roofAt(blendStart,a),y1:deck(end,finishX/profile.halfWidth(end))[1],
+        const start=rearZ(blendStart,a),cut=rearZ(glassSill(a),a),span=cut-start;
+        const sill=1.039-.010*a*a-.035*smooth(.818,1,a);
+        const slope=-.310+.028*a*a;
+        rail={start,span,y0:roofAt(blendStart,a),y1:sill,
           m0:span*(roofAt(blendStart+.001,a)-roofAt(blendStart-.001,a))/
-            (rearZ(blendStart+.001,a)-rearZ(blendStart-.001,a)),m1:-span*(.476-.038*a*a)};
-        const cut=rearZ(glassSill(a),a),t=(cut-start)/span,t2=t*t;
-        const slope=((6*t2-6*t)*(rail.y0-rail.y1)+(3*t2-4*t+1)*rail.m0+(3*t2-2*t)*rail.m1)/span;
+            (rearZ(blendStart+.001,a)-rearZ(blendStart-.001,a)),m1:span*slope};
         const tailX=a*widthAt(backCab),cap=at=>deck(at,tailX/profile.halfWidth(at))[1],reach=backCab-cut;
-        const freeSill=hermite(t,rail.y0,rail.y1,rail.m0,rail.m1);
-        // A transverse crown lets the glass bow in plan while its sill
-        // stays nearly horizontal in the mounted rear view. Ease back into
-        // the fixed roof rails outside the aperture.
-        const mountedSill=.9618-a*a*(.007-.0015*a*a);
-        rail.crown=(mountedSill-freeSill)*(1-smooth(.93,1,a));
-        rail.header=rearZ(glassHeader(a),a);
-        // Roll the painted reveal from the glass tangent into the fixed boot
-        // tangent, keeping the shutlines smooth across the old glass landing.
-        rail.reveal={cut,reach,y0:freeSill+rail.crown,
-          y1:cap(backCab),m0:slope*reach,m1:reach*(cap(backCab+.001)-cap(backCab-.001))/.002};
+        rail.reveal={cut,reach,y0:sill,y1:cap(backCab),
+          m0:slope*reach,m1:reach*(cap(backCab+.001)-cap(backCab-.001))/.002};
         curves.set(a,rail);
       }
       if(z>=backCab)return deck(physical,x/profile.halfWidth(physical))[1];
       const r=rail.reveal;
       if(physical>r.cut)return hermite(clamp((physical-r.cut)/r.reach),r.y0,r.y1,r.m0,r.m1);
-      return hermite(clamp((physical-rail.start)/rail.span),rail.y0,rail.y1,rail.m0,rail.m1)
-        +rail.crown*smooth(rail.header,r.cut,physical);
+      return hermite(clamp((physical-rail.start)/rail.span),rail.y0,rail.y1,rail.m0,rail.m1);
     }
-    function canopy(z,u) {
+    function rawCanopy(z,u) {
       const a=Math.abs(u),frontBlend=smooth(frontCab,frontCab+.105,z),edge=deck(z,u*footU(z));
       const x=mix(edge[0],u*widthAt(z),frontBlend);
       const physical=z+frontBlend*glassBow(z)*(1-a*a);
@@ -165,11 +170,33 @@
       }
       return [x,Math.max(edge[1],y),physical];
     }
-    function cabinSide(s,z,v,recess=0) {
-      const a=foot(s,z),b=canopy(z,s),curve=.012*Math.sin(pi*v);
-      return [mix(a[0],b[0],v)+s*(curve-recess),mix(a[1],b[1],v),mix(a[2],b[2],v)];
+    function sidePoint(s,z,v,base,rail){
+      const arc=Math.sin(pi*v),height=rail[1]-base[1];
+      const crown=(.012+.012*extent(z,.72,1.485,.19)*arc)*arc*smooth(0,.11,height);
+      return [mix(base[0],rail[0],v)+s*crown,mix(base[1],rail[1],v),mix(base[2],rail[2],v)];
     }
-    return {outer,deck,outerU,foot,footU,canopy,cabinSide};
+    // The pressed C-pillar rolls through the roof edge. Both adjoining skins
+    // sample the same quadratic section, including the tangent at its middle.
+    const rollAt=z=>extent(z,.39,backCab,.22);
+    function sail(s,z,t,roll,base,rail){
+      const inner=rawCanopy(z,s*(1-.119*roll));
+      const outer=sidePoint(s,z,1-.20*roll,base,rail),u=1-t;
+      return inner.map((p,i)=>u*u*p+2*u*t*rail[i]+t*t*outer[i]);
+    }
+    function canopy(z,u){
+      const a=Math.abs(u),roll=rollAt(z);
+      if(!roll||a<=1-.119*roll)return rawCanopy(z,u);
+      const s=Math.sign(u),t=.5*(1-(1-a)/(.119*roll));
+      return sail(s,z,t,roll,foot(s,z),rawCanopy(z,s));
+    }
+    function cabinSide(s,z,v,recess=0) {
+      const base=foot(s,z),rail=rawCanopy(z,s),roll=rollAt(z);
+      const p=roll&&v>1-.20*roll?sail(s,z,.5+.5*(1-v)/(.20*roll),roll,base,rail)
+        :sidePoint(s,z,v,base,rail);
+      p[0]-=s*recess;
+      return p;
+    }
+    return {outer,deck,outerU,foot,footU,widthAt,canopy,cabinSide};
   }
 
   function sheetMetal(api,body) {
@@ -206,8 +233,12 @@
           },[s,0,0],color);
         }
       }
-      // Side crowns run inside the door glass. Leave its centre open onto the seats.
-      b.patch('paint',80,5,(u,v)=>{const z=mix(frontCab,backCab,u);return deck(z,s*mix(footU(z),outerU(z),v));},up,white);
+      // Match the side shell at the door belt and along the entire C-pillar.
+      for(const [from,to] of [[frontCab,sideGlassStart],[sideGlassStart,sideGlassEnd],[sideGlassEnd,backCab]]){
+        b.patch('paint',sideCount(from,to),5,(u,v)=>{
+          const z=sideStation(from,to,u);return deck(z,s*mix(footU(z),outerU(z),v));
+        },up,white);
+      }
     }
     const bonnets=(z,u)=>deck(z,(u*2-1)*outerU(z));
     b.patch('paint',36,38,(u,v)=>bonnets(mix(profile.frontZ,frontCab,v),u),up,white);
@@ -288,7 +319,7 @@
   }
 
   function sideFurniture(api,body) {
-    const {b,tube,atlasUV,profile}=api,{outer,deck,outerU,footU}=body;
+    const {b,tube,atlasUV,profile}=api,{outer,deck,outerU,footU,foot,cabinSide}=body;
     function stickerUV(value,u,v) {
       return [mix(mix(value[0][0],value[1][0],u),mix(value[3][0],value[2][0],u),v),
         mix(mix(value[0][1],value[1][1],u),mix(value[3][1],value[2][1],u),v)];
@@ -327,10 +358,21 @@
       const outline=[[-.680,profile.shoulderY(-.68)],[-.691,.660],[-.689,.419],[-.673,.283],[-.648,.239],[-.618,.218],[-.56,.205],
         [.41,.205],[.465,.216],[.502,.245],[.540,.311],[.579,.437],[.598,.587],[.600,.720],[.590,profile.shoulderY(.590)]];
       for(let i=1;i<outline.length;i++){
-        const [za,ya]=outline[i-1],[zb,yb]=outline[i],n=Math.max(2,Math.ceil(Math.hypot(zb-za,yb-ya)/.024));
-        for(let j=1;j<=n;j++)path.push(outer(s,mix(za,zb,j/n),mix(ya,yb,j/n),.0026));
+        const [za,ya]=outline[i-1],[zb,yb]=outline[i],shoulder=i===outline.length-1;
+        const n=shoulder?18:Math.max(2,Math.ceil(Math.hypot(zb-za,yb-ya)/.024));
+        for(let j=1;j<=n;j++){
+          const t=shoulder?1-(1-j/n)**2:j/n,p=outer(s,mix(za,zb,t),mix(ya,yb,t),.0026);
+          if(shoulder)p[1]+=.0012*t;
+          path.push(p);
+        }
       }
       for(let i=0;i<=7;i++)path.push(ledge(.590,1-i/7));
+      // The back edge of the door crosses the painted belt up to the fixed glass.
+      for(let i=1;i<=8;i++){
+        const v=i/8,z=mix(.590,.560,v),base=foot(s,z)[1];
+        const lane=.5*(sillGlass(z)-base)/(cabinSide(s,z,.5)[1]-base);
+        const p=cabinSide(s,z,lane*v,-.0013);p[1]+=.0007;path.push(p);
+      }
       tube(b,'rubber',path,.0020,0x3b3e3c,6);
       // A shallow body-coloured pocket and a separate bridge make a real finger recess.
       const handleZ=.405,hy=.665;
@@ -370,19 +412,26 @@
   }
 
   function rearWindow(api,body) {
-    const {b,tube,profile}=api,{canopy,deck}=body;
+    const {b,tube}=api,{canopy,widthAt}=body;
     // Flush bonded glass and its painted opening share one curved fastback.
     const start=.708, facing=[0,1,.46];
-    const station=(a,t)=>mix(glassHeader(a),glassSill(a),t);
+    const station=glassStation;
     const corner=(distance,length,width,cap=0)=>{
       const d=clamp(distance/length),rise=Math.sqrt(cap*cap+d*(2-d))-cap;
       return width*(1-rise/(Math.sqrt(1+cap*cap)-cap));
     };
-    // The gallery car's sides flare into a broad base. The corner returns
-    // are compact and tangent to the stamped white trunk reveal.
-    const half=t=>mix(.934,.956,t)+.035*Math.sin(pi*t)**2
-      -corner(t,.105,.069,.32)-corner(1-t,.132,.046);
-    const row=v=>.42*v+.58*v*v*(3-2*v);
+    // Width is measured across the bonded glass, independent of the sail
+    // panels. Keeping it in metres preserves the flared base as the roof widens.
+    const edges=new Map();
+    const half=t=>{
+      if(edges.has(t))return edges.get(t);
+      const span=mix(.543,.608,t)+.012*Math.sin(pi*t)
+        -corner(t,.115,.052,.23)-corner(1-t,.082,.029);
+      let a=.79;
+      for(let i=0;i<3;i++)a=span/widthAt(station(a,t));
+      edges.set(t,a);return a;
+    };
+    const row=glassRow;
     const point=(a,t)=>canopy(station(a,t),a);
     const rim=(a,t)=>{
       const p=point(a,t);p[1]+=.0007;return p;
@@ -415,14 +464,23 @@
     for(let i=50;i>=0;i--){const t=row(i/50);bead.push(rim(-half(t),t));}
     tube(b,'rubber',bead,.0016,weatherstrip,6);
 
-    // The trunk shutlines leave the window at its rounded lower corners and
-    // run over the deck into the top edge of the rear combination lamps.
+    // Trace the stamped corner in physical plan. Its z station and the canopy
+    // parameter differ because the bonded glass bows aft across its width.
+    const end=point(half(1),1),reach=backCab-end[2];
+    api.rearDeck.shutline=(s,t)=>{
+      const z=mix(end[2],backCab,t),travel=t*t*(3-2*t);
+      const x=s*(mix(end[0],.604,travel)+reach*t*(1-t)*(.22*(1-t)-.18*t));
+      let station=z,p;
+      for(let i=0;i<5;i++){
+        p=canopy(station,x/widthAt(station));
+        station+=z-p[2];
+      }
+      return p;
+    };
     for(const s of [-1,1]){
-      const a=s*half(1),line=[],z0=station(a,1);
-      const x0=Math.abs(point(a,1)[0]);
-      for(let i=0;i<=42;i++){
-        const t=i/42,z=mix(z0,1.988,t),x=s*mix(x0,.801,1-(1-t)**1.8);
-        const p=z<backCab?canopy(z,x/canopy(z,1)[0]):deck(z,x/profile.halfWidth(z));
+      const line=[];
+      for(let i=0;i<=24;i++){
+        const p=api.rearDeck.shutline(s,i/24);
         p[1]+=.0009;line.push(p);
       }
       tube(b,'rubber',line,.0018,0x424846,6);
@@ -434,9 +492,9 @@
     // A molded, body-color shark fin follows the changing roof crown. Its
     // upper ridge peaks behind the center of the teardrop-shaped gasket.
     const width=curve([[0,0],[.08,.012],[.29,.026],[.55,.037],[.78,.040],[.92,.031],[1,0]]);
-    const height=curve([[0,0],[.12,.007],[.35,.025],[.61,.052],[.78,.070],[.87,.062],[.96,.027],[1,0]]);
+    const height=curve([[0,0],[.12,.005],[.35,.018],[.61,.039],[.78,.0526],[.87,.047],[.96,.021],[1,0]]);
     const at=(t,x,lift)=>{
-      const z=mix(.466,.655,t),p=canopy(z,x/roofWidth(z));p[1]+=lift;return p;
+      const z=mix(.536,.705,t),p=canopy(z,x/roofWidth(z));p[1]+=lift;return p;
     };
     b.patch('paint',24,38,(u,t)=>{
       const a=2*u-1,r=(Math.sqrt(a*a+.0036)-.06)/(Math.sqrt(1.0036)-.06);
@@ -482,68 +540,75 @@
     },down,0x464a46);
     rearWindow(api,body);
     for(const s of [-1,1]){
+      const limits=new Map();
       function paneFraction(z,edge) {
-        const low=foot(s,z)[1],high=canopy(z,s)[1],h=Math.max(.01,high-low);
-        const lo=clamp((sillGlass(z)-low)/h,.035,.9);
-        const hi=clamp((headGlass(z)-low)/h,lo,.978);
-        switch(edge){
-          case 0:return 0;
-          case 1:return lo;
-          case 2:return lo+(hi-lo)*.039;
-          case 3:return hi-(hi-lo)*.033;
-          case 4:return hi;
-          default:return 1;
+        if(edge===0||edge===5)return edge/5;
+        if(!limits.has(z)){
+          const low=foot(s,z)[1],h=Math.max(.010,cabinSide(s,z,.5)[1]-low)*2;
+          const lo=clamp((sillGlass(z)-low)/h,.035,.90);
+          const hi=clamp((headGlass(z)-low)/h,lo,.978);
+          const inset=Math.min(.5*(hi-lo),.008/h);
+          limits.set(z,[0,lo,lo+inset,hi-inset,hi,1]);
         }
+        return limits.get(z)[edge];
       }
+      const start=sideGlassStart,end=sideGlassEnd;
+      const post=v=>mix(.525,.574,v);
+      const postFront=v=>post(v)-.015,postRear=v=>post(v)+.018;
+      const station=(edge,v)=>typeof edge==='function'?edge(v):edge;
       const sidePanel=(finish,z0,z1,e0,e1,color,dip=0)=>{
         const vertical=e0===0&&e1===5?24:8;
-        b.patch(finish,Math.max(3,Math.ceil((z1-z0)/.020)),vertical,(u,v)=>{
-          const z=mix(z0,z1,u),lo=paneFraction(z,e0),hi=paneFraction(z,e1);
+        const count=sideCount(station(z0,.5),station(z1,.5));
+        b.patch(finish,count,vertical,(u,v)=>{
+          // More stations resolve the little radius at the quarter-light tip.
+          const z=sideStation(station(z0,v),station(z1,v),u),lo=paneFraction(z,e0),hi=paneFraction(z,e1);
           return cabinSide(s,z,mix(lo,hi,v),dip*Math.sin(pi*v)*Math.sin(pi*u));
         },[s,.18,0],color);
       };
-      const start=-.633,end=1.008;
       sidePanel('paint',frontCab,start,0,5,white);sidePanel('paint',end,backCab,0,5,white);
       sidePanel('paint',start,end,0,1,white);sidePanel('paint',start,end,4,5,white);
       sidePanel('blackGlass',start,end,1,2,0x222728);sidePanel('blackGlass',start,end,3,4,0x222728);
-      const pillar=.553;
-      sidePanel('sideGlass',start,pillar-.023,2,3,0xffffff,.005);
-      sidePanel('blackGlass',pillar-.023,pillar+.019,2,3,0x25292b);
-      sidePanel('sideGlass',pillar+.019,end,2,3,0xbbc9c5,.0035);
+      sidePanel('sideGlass',start,postFront,2,3,0xffffff,.005);
+      sidePanel('blackGlass',postFront,postRear,2,3,0x25292b);
+      sidePanel('sideGlass',postRear,end,2,3,0xbbc9c5,.0035);
       const badge=api.atlasUV('quarterBadge');
       b.patch('marks',9,8,(u,v)=>{
-        const z=mix(.590,.680,s>0?1-u:u),y=mix(.885,.976,v);
-        const h=(y-foot(s,z)[1])/(canopy(z,s)[1]-foot(s,z)[1]);
+        const z=mix(.595,.677,s>0?1-u:u),y=mix(.887,.971,v),base=foot(s,z)[1];
+        const h=.5*(y-base)/(cabinSide(s,z,.5)[1]-base);
         const lo=paneFraction(z,2),hi=paneFraction(z,3);
-        const recess=.0035*Math.sin(pi*clamp((h-lo)/(hi-lo)))*
-          Math.sin(pi*clamp((z-pillar-.019)/(end-pillar-.019)));
+        const vGlass=clamp((h-lo)/(hi-lo)),from=postRear(vGlass);
+        const uGlass=1-(1-clamp((z-from)/(end-from)))**(1/1.36);
+        const recess=.0035*Math.sin(pi*vGlass)*Math.sin(pi*uGlass);
         const p=cabinSide(s,z,h,recess);p[0]+=s*.0016;return p;
       },[s,.17,0],0xffffff,(u,v)=>[mix(badge[0][0],badge[1][0],u),mix(badge[0][1],badge[3][1],v)]);
       // Interior-facing pillar trims, door shoulders and parcel-shelf sides
       // give the windows a shaded room to look into in cross-light.
       const lining=(z0,z1,e0,e1,tint)=>{
-        b.patch('interior',Math.max(4,Math.ceil((z1-z0)/.04)),5,(u,v)=>{
-          const z=mix(z0,z1,u),a=paneFraction(z,e0),c=paneFraction(z,e1);
+        const count=Math.max(4,Math.ceil((station(z1,.5)-station(z0,.5))/.04));
+        b.patch('interior',count,5,(u,v)=>{
+          const z=mix(station(z0,v),station(z1,v),u),a=paneFraction(z,e0),c=paneFraction(z,e1);
           const p=cabinSide(s,z,mix(a,c,v),.026);p[1]-=.012;return p;
         },[-s,-.18,0],tint);
       };
       lining(frontCab,start,0,5,0x404442);lining(end,backCab,0,5,0x383e3e);
       lining(start,end,0,1,0x2c3233);lining(start,end,4,5,0x3b4040);
-      lining(pillar-.028,pillar+.024,1,4,0x222729);
+      lining(v=>postFront(v)-.004,v=>postRear(v)+.004,1,4,0x222729);
       b.patch('interior',40,6,(u,v)=>{
         const z=mix(-.71,1.265,u),p=foot(s,z),y=mix(.398,p[1]-.012,v);
         return [p[0]-s*(.036+.042*(1-v)),y,z];
       },[-s,.06,0],0x2b3031);
       const roofGutter=[];
-      const capEnd=glassHeader(.952)-.014,capStart=capEnd-.086;
+      // The ditch meets the upper glass corner, inside the rounded metal sail.
+      const gutterAt=z=>mix(.940,.798,smooth(.24,.815,z));
+      const capEnd=glassHeader(.798)-.012,capStart=capEnd-.080;
       for(let i=0;i<=32;i++){
-        const z=mix(-.041,capStart+.004,i/32),p=canopy(z,s*.952);p[1]+=.0008;roofGutter.push(p);
+        const z=mix(-.041,capStart+.004,i/32),p=canopy(z,s*gutterAt(z));p[1]+=.0008;roofGutter.push(p);
       }
       tube(b,'rubber',roofGutter,.0020,0x626963,6);
       // Low black gutter caps bookend the painted roof above the glass.
       b.patch('rubber',6,15,(u,v)=>{
         const z=mix(capStart,capEnd,v),width=.013*(.74+.26*Math.sin(pi*v));
-        const p=canopy(z,s*(.952+(2*u-1)*width));
+        const p=canopy(z,s*(gutterAt(z)+(2*u-1)*width));
         p[1]+=.0014+.0014*(1-(2*u-1)**2)*Math.sin(pi*v);return p;
       },[s*.15,1,.12],0x292d2e);
     }
@@ -614,7 +679,7 @@
     },(u,v)=>[Math.cos(u*2*pi)*Math.cos((v-.5)*pi),Math.sin((v-.5)*pi),Math.sin(u*2*pi)*Math.cos((v-.5)*pi)],color);
   }
 
-  function cockpit(api) {
+  function cockpit(api,body) {
     const {b,box,rod,tube}=api;
     box(b,'interior',[0,.31,.34],[1.45,.12,2.14],0x292b2b);
     // Shallow instrument panel spanning the windscreen. Its top stays clear of the outside bonnet.
@@ -667,14 +732,21 @@
     // A molded parcel shelf fits between the quarter trims below the bonded
     // rear glass. The short lip follows the backs of the two rear seats.
     const shelf=(a,v)=>{
-      const z=mix(.932+.115*a*a,1.512-.056*a*a,v);
+      const tail=smooth(.65,1,v),z=mix(.932+.115*a*a,1.512-.056*a*a,v)+.018*tail;
       const crown=.006*(1-a*a)*Math.sin(pi*v);
-      return [a*mix(.68,.765,v),.796+.033*v+.008*a**4-.004*Math.sin(pi*v)+crown,z];
+      return [a*mix(.68,.765,v),.796+.033*v+.008*a**4-.004*Math.sin(pi*v)+crown+.045*tail,z];
     };
     b.patch('interior',36,14,(u,v)=>shelf(2*u-1,v),up,0x303534);
     b.patch('interior',36,2,(u,v)=>{
       const p=shelf(2*u-1,0);p[1]-=.032*(1-v);return p;
     },forward,0x262b2b);
+    // Close the tray up under the bonded sill. The outer glass is transparent
+    // and this is the inner trim seen behind its lower ceramic border.
+    b.patch('interior',36,6,(u,v)=>{
+      const a=2*u-1,tray=shelf(a,1),lip=body.canopy(glassSill(a),a);
+      return [mix(tray[0],lip[0]*.985,v),mix(tray[1],lip[1]-.010,v*v),
+        mix(tray[2],lip[2]+.014,v)];
+    },[0,.50,-1],0x282d2e);
     for(const s of [-1,1]){
       const anchor=shelf(s*.455,.37);
       box(b,'trim',[anchor[0],anchor[1]+.003,anchor[2]],[.069,.006,.044],0x343938,-.05);
@@ -763,7 +835,7 @@
     sideFurniture(api,body);yield;
     cabinShell(api,body);yield;
     mirrors(api,body);yield;
-    cockpit(api);yield;
+    cockpit(api,body);yield;
     driver(api);yield;
   });
 })();
