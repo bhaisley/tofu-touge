@@ -23,13 +23,6 @@ async function check(){
       }
     });
     await page.goto(local?pathToFileURL(path.resolve(source)).href:source);
-    await page.evaluate(()=>{
-      const model=window.TougeNeo86,build=model.buildFascias;
-      model.buildFascias=function(api){
-        window.testPlateUV=api.atlasUV('plate');
-        return build.call(this,api);
-      };
-    });
     await page.locator('#view-car').click();
     await page.waitForFunction(()=>document.body.dataset.state==='viewcar');
     const report=await page.evaluate(()=>{
@@ -123,13 +116,16 @@ async function check(){
           bumperBands.push({side,z,shades});
         }
       }
-      const markUV=marks.attributes.uv,markPos=marks.attributes.position;
-      const plateCorners=window.testPlateUV.map(([u,v])=>{
-        for(let i=0;i<markUV.count;i++)if(Math.abs(markUV.getX(i)-u)<1e-6 && Math.abs(markUV.getY(i)-v)<1e-6)
-          return new THREE.Vector3().fromBufferAttribute(markPos,i);
-        throw new Error('Registration atlas corner missing from the marks mesh');
-      });
-      const [bl,br,tr,tl]=plateCorners;
+      // The registration is the only decal inside the lower rear recess.
+      // Read its two rendered triangles after the staged build has completed.
+      const markPos=marks.attributes.position,plateCorners=[];
+      for(let i=0;i<markPos.count;i++){
+        const p=new THREE.Vector3().fromBufferAttribute(markPos,i);
+        if(p.z>1.85 && p.y<.60 && Math.abs(p.x)<.32 && !plateCorners.some(q=>q.equals(p)))plateCorners.push(p);
+      }
+      if(plateCorners.length!==4)throw new Error('Registration quad missing from the rear recess');
+      plateCorners.sort((a,b)=>a.y-b.y || a.x-b.x);
+      const [bl,br,tl,tr]=plateCorners;
       const platePoint=(u,v)=>bl.clone().lerp(br,u).lerp(tl.clone().lerp(tr,u),v);
       const plate={center:platePoint(.5,.5).toArray(),width:bl.distanceTo(br),height:tl.y-bl.y};
       function vertices(name){
