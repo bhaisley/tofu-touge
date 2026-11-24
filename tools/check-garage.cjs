@@ -28,14 +28,18 @@ async function main(){
     await page.goto(url,{waitUntil:'load'});
     assert.equal(await page.locator('body').getAttribute('data-car'),'neo86');
     assert.match(await page.locator('#menu-record').textContent(),/02:17\.21/);
+    // The title prepares the selected car during idle time. Wait for that
+    // state explicitly so the test does not depend on page download speed.
+    await page.waitForFunction(()=>window.garageWorld?.preparedCourses?.size>0,null,{timeout:90000});
+    assert.deepEqual(await page.evaluate(()=>[...garageWorld.vehicles.keys()]),['neo86']);
     await click('#next-car');assert(await page.locator('#menu-record').isHidden());
     await click('#view-car');await state('viewcar');await ready('ae86');
     const first=await page.evaluate(()=>{
       window.firstPass=garageWorld;window.firstTrueno=garageWorld.car;window.parkingSpot=garageDrive.contact.s;
-      return [garageWorld.vehicles.size,garageWorld.car.axles.rear-garageWorld.car.axles.front,
+      return [[...garageWorld.vehicles.keys()],garageWorld.car.axles.rear-garageWorld.car.axles.front,
         garageWorld.effects.exhaust.jets.length,garageWorld.car.driver.visible,garageWorld.car.group.name];
     });
-    assert.equal(first[0],1);assert(Math.abs(first[1]-2.4)<.002);
+    assert.deepEqual(first[0],['neo86','ae86']);assert(Math.abs(first[1]-2.4)<.002);
     assert.equal(first[2],1);assert.equal(first[3],false);assert.match(first[4],/Trueno/);
     await page.evaluate(()=>{
       for(const id of ['neo86','ae86','neo86'])document.querySelector('[data-vehicle="'+id+'"]').click();
