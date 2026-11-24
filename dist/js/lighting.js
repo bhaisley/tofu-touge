@@ -177,7 +177,9 @@
     sky.userData.setNight=setNight;
     const files=fuji?['mikuni-afternoon-horizon.webp','mikuni-blue-hour-horizon.webp']:['haruna-sky.webp'];
     files.forEach((file,index)=>{
-      new T.TextureLoader().load(window.TougeArtURLs?.[file]||'assets/art/'+file,texture=>{
+      // A cached skyline from the earlier atlas layout uses different UVs.
+      const url=window.TougeArtURLs?.[file]||'assets/art/'+file+(fuji?'?layout=2':'');
+      new T.TextureLoader().load(url,texture=>{
         if(renderer.getContext().isContextLost())return;
         texture.colorSpace=T.SRGBColorSpace;texture.wrapS=T.RepeatWrapping;panoramas[index]=texture;
         const key=material.uniforms.night.value;

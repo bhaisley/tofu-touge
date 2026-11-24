@@ -6,22 +6,27 @@
   const sunDirection=new T.Vector3(-.823,.244,.513).normalize();
   const dawnDirection=new T.Vector3(.93,.28,.22).normalize();
   const horizonSource=`
-    uniform sampler2D panorama;
+    uniform highp sampler2D panorama;
     uniform float ready,night;
     uniform vec3 skyOrigin;
-    vec4 mikuniBand(vec2 bearing,float v) {
-      float u=atan(bearing.x,-bearing.y)/6.28318531;
-      vec2 uv=vec2(u,v);
-      // Longitude repeats. A pixel crossing +/-180 degrees still covers
-      // its neighbours' few texels on the atlas, even in a reflection.
+    vec4 mikuniSample(vec2 uv,vec2 local,vec2 scale) {
+      // Derive the footprint before wrapping longitude or folding the sky
+      // into the atlas. Otherwise a single pixel can select the coarsest mip.
       #if __VERSION__ >= 300
-        vec2 dx=dFdx(uv),dy=dFdy(uv);
+        vec2 dx=dFdx(local),dy=dFdy(local);
         dx.x-=floor(dx.x+.5);
         dy.x-=floor(dy.x+.5);
-        return textureGrad(panorama,uv,dx,dy);
+        return textureGrad(panorama,uv,dx*scale,dy*scale);
       #else
-        return texture2D(panorama,uv,abs(u)>.49?-12.:0.);
+        vec2 jump=fwidth(uv);
+        return texture2D(panorama,uv,max(jump.x,jump.y)>.25?-12.:0.);
       #endif
+    }
+    float mikuniCoverage(float mask) {
+      // The bake stores the continuous angular distance to the crest on
+      // either side of 192/255. Antialias that contour at screen resolution.
+      float edge=192./255.,pixel=max(.5*fwidth(mask),.5/255.);
+      return smoothstep(edge-pixel,edge+pixel,mask);
     }
     float mikuniHaze(float distanceM) {
       return .94*smoothstep(320.,1050.,distanceM);
@@ -32,24 +37,35 @@
       if(ready<.5)return fallback;
       float horizontal=max(length(d.xz),.00001);
       vec2 bearing=horizontal>.00001?d.xz/horizontal:vec2(0.,-1.);
+      float longitude=atan(bearing.x,-bearing.y)/6.28318531;
       float elevation=degrees(asin(clamp(d.y,-1.,1.)));
-      float farV=clamp((elevation+8.)/70.,.001,.999);
-      vec3 farColor=mikuniBand(bearing,.375+.625*farV).rgb;
-      if(elevation>22.)return farColor;
+      // The upper quarter holds the lower and upper sky side by side.
+      float skyV=2.*clamp((elevation+8.)/70.,0.,1.),upper=step(1.,skyV);
+      vec2 skyScale=vec2(.5-2./1024.,.25-2./256.);
+      vec2 skyUV=vec2(.5*upper+1./1024.,.75+1./256.)+skyScale*vec2(fract(longitude),skyV-upper);
+      vec3 air=mikuniSample(skyUV,vec2(longitude,skyV),skyScale).rgb;
+
+      // The far survey devotes 30% of its bearings to the 30° around Fuji.
+      float delta=fract(longitude-251./360.+.5)-.5,angle=abs(delta);
+      float farU=.5+sign(delta)*(min(angle,15./360.)*(.15/(15./360.))
+        +max(0.,angle-15./360.)*(.35/(.5-15./360.)));
+      vec2 farLocal=vec2(farU,clamp((elevation+3.)/14.,.002,.998));
+      vec2 farScale=vec2(1.,7./16.);
+      vec4 mountain=mikuniSample(vec2(0.,5./16.)+farLocal*farScale,farLocal,farScale);
 
       // The near 6.5 km of surveyed terrain is a cutout on a 3.2 km
       // cylinder. Each viewing bearing hits it once at any camera position.
-      // Revealing a slope exposes the independently baked far panorama.
+      // Revealing a slope exposes the independently baked far terrain.
       vec3 eye=clamp(cameraPosition-skyOrigin,vec3(-440.,-68.,-440.),vec3(440.,68.,440.))*(.50/3200.);
       float along=dot(eye.xz,bearing);
       float travel=sqrt(1.-dot(eye.xz,eye.xz)+along*along)-along;
       vec2 nearBearing=eye.xz+travel*bearing;
       float nearElevation=degrees(atan(eye.y+travel*d.y/horizontal));
-      float nearV=clamp((nearElevation+21.)/40.,.001,.97);
-      vec4 shore=mikuniBand(nearBearing,.375*nearV);
-      // Covered samples are opaque. Empty samples contribute zero RGB,
-      // so linear filtering gives premultiplied coverage at the ridgeline.
-      return shore.rgb+farColor*(1.-shore.a);
+      float nearV=nearElevation< -5.?(.20/16.)*(nearElevation+21.):.20+(.80/22.)*(nearElevation+5.);
+      vec2 nearLocal=vec2(atan(nearBearing.x,-nearBearing.y)/6.28318531,clamp(nearV,.002,.998));
+      vec2 nearScale=vec2(1.,5./16.);
+      vec4 shore=mikuniSample(nearLocal*nearScale,nearLocal,nearScale);
+      return mix(mix(air,mountain.rgb,mikuniCoverage(mountain.a)),shore.rgb,mikuniCoverage(shore.a));
     }`;
   // Long grass covers the upper traverses and several open ledges between
   // the wooded hairpins. The lower switchback faces Fuji on the return run.

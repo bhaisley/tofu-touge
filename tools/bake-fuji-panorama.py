@@ -2,8 +2,8 @@
 
 Pass a directory containing the two SRTMGL1 .hgt.zip files or unzipped .hgt files.
 The original 1 arc-second tiles are available at https://step.esa.int/auxdata/dem/SRTMGL1/.
-The bake needs NumPy and Pillow. Each atlas holds an opaque distant panorama
-above a cutout of the nearby terrain, with previously hidden scenery behind it.
+The bake needs NumPy and Pillow. Each atlas holds the sky and two independent
+terrain layers. Their alpha channels encode angular distance to the ridgeline.
 """
 from argparse import ArgumentParser
 from pathlib import Path
@@ -18,9 +18,10 @@ LAT, LON, EYE = 35.4126, 138.9094, 1094.
 DEG = np.pi / 180
 EAST = 111320 * np.cos(LAT * DEG)
 NORTH = 110940
-# Atlas layout shared with dist/js/fuji.js, from the top of the image.
-FAR_BOTTOM, FAR_TOP = -8., 62.
-NEAR_BOTTOM, NEAR_TOP = -21., 19.
+# Atlas layout shared with dist/js/fuji.js. The highest far summit is 8.8°
+# and the nearest ridge reaches 14.8° from the survey point.
+FUJI_BEARING = 251.
+FAR_BOTTOM, FAR_TOP = -3., 11.
 
 
 def read_tile(folder, name):
@@ -68,10 +69,9 @@ def noise(x, y, period):
     return mix(mix(hash_at(0, 0), hash_at(1, 0), u), mix(hash_at(0, 1), hash_at(1, 1), u), v)
 
 
-def background(w, elevations, blue):
-    h = len(elevations)
-    az = np.broadcast_to(np.arange(w)[None, :] * 360 / w, (h, w))
-    alt = np.broadcast_to(elevations[:, None], (h,w))
+def background(bearings, elevations, blue, source):
+    az = bearings[None, :] * 360
+    alt = elevations[:, None]
     sun = 100 if blue else 238
     elevation = -4.5 if blue else 14.1
     ang = (az - sun + 180) % 360 - 180
@@ -82,16 +82,18 @@ def background(w, elevations, blue):
     zenith = np.array([.17,.24,.40]) if blue else np.array([.31,.49,.66])
     if blue:
         # The Belt of Venus sits opposite the sun, above the earth-shadow band.
-        horizon += (np.exp(-(.12*(alt-7.5))**2)*np.exp(-((np.abs(ang)-180)/95)**2))[...,None]*[.13,.019,.026]
+        horizon = horizon + (np.exp(-(.12*(alt-7.5))**2)*np.exp(-((np.abs(ang)-180)/95)**2))[...,None]*[.13,.019,.026]
     sky = mix(zenith, horizon, depth[...,None])
     # Only cloud structure above the Haruna horizon is reused. Both solar
     # positions, atmospheric gradients and the terrain underneath are local.
-    source = np.asarray(Image.open(ART/"haruna-sky.webp").convert("RGB"),dtype=float)/255
     sy, sx = source.shape[:2]
-    px = (w * .73 + (az - sun) * w / 360) / w
-    py = .526-np.clip((alt - 3) / 80,0,.515)
-    ix, iy = (np.mod(px,1)*sx).astype(int)%sx, np.clip((py*sy).astype(int),0,sy-1)
-    cloud = source[iy,ix]
+    px = np.mod(.73 + (az-sun)/360, 1)*sx-.5
+    py = np.clip((.526-np.clip((alt-3)/80,0,.515))*sy-.5,0,sy-1)
+    ix, iy = np.floor(px).astype(int), np.floor(py).astype(int)
+    fx, fy = (px-ix)[...,None], (py-iy)[...,None]
+    def sample_row(y):
+        return mix(source[y,ix%sx], source[y,(ix+1)%sx], fx)
+    cloud = mix(sample_row(iy),sample_row(np.minimum(iy+1,sy-1)),fy)
     lum = cloud@np.array([.26,.57,.17])
     structure = (lum-.56)*.85 + (cloud[:,:,0]-cloud[:,:,2])*.43
     band = smooth(1,8,alt) * (1-smooth(43,70,alt))
@@ -106,14 +108,34 @@ def background(w, elevations, blue):
     return np.clip(sky,0,1).astype(np.float32)
 
 
-def render_band(dem, width, height, bottom, top, ranges, near):
-    elevations = top - (np.arange(height) + .5) * (top - bottom) / height
-    fields = [np.zeros((height,width,3),dtype=np.float32) if near else background(width,elevations,blue)
-              for blue in (False,True)]
-    alpha = np.full((height,width),255,dtype=np.uint8)
-    for start in range(0,width,96):
-        end = min(start+96,width)
-        az = np.arange(start,end)*2*np.pi/width
+def sky_band(width, height, blue, source):
+    # Fold the full-height sky into two side-by-side rectangles. Repeat the
+    # photograph into the gutters so filtering crosses the longitude and fold.
+    tile_width = width//2
+    u = ((np.arange(tile_width)+.5)/width-1/1024) / (.5-2/1024)
+    v = ((height-np.arange(height)-.5)/(4*height)-1/256) / (.25-2/256)
+    strips = [background(u,-8+35*(v+i),blue,source) for i in (0,1)]
+    rgb = np.concatenate(strips,axis=1)
+    return np.dstack((np.rint(rgb*255).astype(np.uint8),np.full((height,width),255,np.uint8)))
+
+
+def render_band(dem, width, height, ranges, near):
+    # Four terrain rays per output texel filter snow, woodland and water at
+    # their angular footprint before the texture is compressed.
+    u = (np.arange(2*width)+.5)/(2*width)
+    v = 1-(np.arange(2*height)+.5)/(2*height)
+    if near:
+        bearings = u*360
+        elevations = np.interp(v,[0,.20,1],[-21,-5,17])
+    else:
+        # Reserve 30% of the far layer for the 30° surrounding Fuji. The
+        # complete circle still wraps at the bearing opposite the mountain.
+        bearings = FUJI_BEARING + np.interp(u,[0,.35,.65,1],[-180,-15,15,180])
+        elevations = mix(FAR_BOTTOM,FAR_TOP,v)
+    fields = [np.empty((height,width,4),np.uint8) for _ in range(2)]
+    for start in range(0,2*width,128):
+        end = min(start+128,2*width)
+        az = bearings[start:end]*DEG
         vx,vz = np.sin(az), -np.cos(az)
         r = ranges[:,None]
         h = dem(r*vx,r*vz)
@@ -121,13 +143,16 @@ def render_band(dem, width, height, bottom, top, ranges, near):
         # slopes and sky revealed when the near ridge shifts with the camera.
         angles = np.arctan2(h - EYE - r*r/14800000, r)/DEG
         envelope = np.maximum.accumulate(angles,axis=0)
-        ids = np.array([np.searchsorted(col,elevations,side="left") for col in envelope.T]).T
-        seen = ids<len(ranges)
-        hi = np.minimum(ids,len(ranges)-1)
+        crest = envelope[-1]
+        # Extend the true crest colour into the filter footprint above it.
+        # Coverage is reconstructed separately at the player's pixel scale.
+        elevation = np.minimum(elevations[:,None],crest)
+        hi = np.stack([np.searchsorted(col,el,side="left")
+                       for col,el in zip(envelope.T,elevation.T)],axis=1)
         lo = np.maximum(hi-1,0)
         col = np.arange(end-start)[None,:]
         hi_alt,lo_alt = angles[hi,col],angles[lo,col]
-        t = np.clip((elevations[:,None]-lo_alt)/np.maximum(.0001,hi_alt-lo_alt),0,1)
+        t = np.clip((elevation-lo_alt)/np.maximum(.0001,hi_alt-lo_alt),0,1)
         dist = mix(ranges[lo],ranges[hi],t)
         x,z = dist*vx,dist*vz
         a = dem(x,z)
@@ -142,8 +167,11 @@ def render_band(dem, width, height, bottom, top, ranges, near):
         snowline = 2520 + 123*dx - 142*dz + 390*(macro-.5) + 175*(mid-.5) + np.clip(convex*14,-380,480)
         snow = smooth(snowline,snowline+120+75*mid,a)*(1-smooth(12600,14800,radial))
         scoria=smooth(1730,2590,a)*(1-smooth(11000,15200,radial))
-        if near:
-            alpha[:,start:end] = seen.astype(np.uint8) * 255
+        # The 192 contour is the exact surveyed skyline. Even air keeps a
+        # nonzero alpha so browser image decoders preserve its edge colour.
+        distance = crest-elevations[:,None]
+        tile = (height,2,(end-start)//2,2)
+        mask = np.rint((192+np.clip(distance*192,-64,63)).reshape(tile).mean(axis=(1,3)))
         for k,field in enumerate(fields):
             blue = (k==1)
             direction=np.array([.806,.22,.55]) if blue else np.array([-.825,.244,.512])
@@ -172,25 +200,27 @@ def render_band(dem, width, height, bottom, top, ranges, near):
                       np.array([.66,.71,.69]) if not blue else np.array([.53,.57,.68]),(.22+.43*loam)[...,None])
             ripple=(.5-noise(x*.37,z,12))*.041 + .015*np.sin((z+x*.33)*.17+5*macro)
             land=np.where(lake[...,None],water+ripple[...,None],land)
-            pane=field[:,start:end]
-            pane[seen]=np.clip(land[seen],0,1)
-    return [np.dstack((np.clip(np.rint(field*255),0,255).astype(np.uint8),alpha)) for field in fields]
+            pane = field[:,start//2:end//2]
+            pane[:,:,:3] = np.rint(np.clip(land,0,1).reshape(*tile,3).mean(axis=(1,3))*255)
+            pane[:,:,3] = mask
+    return fields
 
 
 def bake(dem, width, height, folder):
-    if height % 8:
-        raise ValueError("The atlas height must be divisible by eight.")
-    near_height = height * 3 // 8
+    if width % 2 or height % 16:
+        raise ValueError("Use an even width and a height divisible by sixteen.")
+    sky_height, near_height = height//4, height*5//16
+    source = np.asarray(Image.open(ART/"haruna-sky.webp").convert("RGB"),dtype=np.float32)/255
     # The break lies past Lake Yamanaka and in front of Fuji. Start the near
     # rays below the survey eye so low views sample the actual hillside.
     near_ranges = np.r_[np.arange(8,162,3),np.arange(162,810,8),np.arange(810,6500,16),6500.]
     far_ranges = np.r_[np.arange(6500,9200,16),np.arange(9200,24001,22),np.arange(24050,50001,63)]
-    far = render_band(dem,width,height-near_height,FAR_BOTTOM,FAR_TOP,far_ranges,False)
-    near = render_band(dem,width,near_height,NEAR_BOTTOM,NEAR_TOP,near_ranges,True)
+    far = render_band(dem,width,height-sky_height-near_height,far_ranges,False)
+    near = render_band(dem,width,near_height,near_ranges,True)
     for k,stem in enumerate(("mikuni-afternoon-horizon","mikuni-blue-hour-horizon")):
-        img = np.concatenate((far[k],near[k]),axis=0)
+        img = np.concatenate((sky_band(width,sky_height,bool(k),source),far[k],near[k]),axis=0)
         dest=folder/(stem+".webp")
-        Image.fromarray(img).save(dest,quality=90,method=6,exact=True)
+        Image.fromarray(img).save(dest,quality=96,method=6,exact=True)
         print(stem, dest.stat().st_size,flush=True)
 
 

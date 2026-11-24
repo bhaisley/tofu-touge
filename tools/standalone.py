@@ -16,7 +16,7 @@ def data_url(path):
 
 
 def inline_scripts(match):
-    src = DIST / match.group(1)
+    src = DIST / match.group(1).partition("?")[0]
     code = src.read_text(encoding="utf-8").replace("</script", "<\\/script")
     return f"<script>\n{code}\n</script>"
 

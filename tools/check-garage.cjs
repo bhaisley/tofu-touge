@@ -41,6 +41,13 @@ async function main(){
     });
     assert.deepEqual(first[0],['neo86','ae86']);assert(Math.abs(first[1]-2.4)<.002);
     assert.equal(first[2],1);assert.equal(first[3],false);assert.match(first[4],/Trueno/);
+    const glass=await page.evaluate(()=>{
+      const pane=name=>garageWorld.car.group.getObjectByName(name).material;
+      return {front:pane('glass').opacity,side:pane('sideGlass').opacity,rear:pane('hatchGlass').opacity,
+        reflective:pane('sideGlass').userData.routeReflections,heated:!!pane('hatchGlass').map};
+    });
+    assert(glass.front<.35 && glass.side>.55 && glass.rear>glass.side && glass.rear<1);
+    assert(glass.reflective && glass.heated);
     await page.evaluate(()=>{
       for(const id of ['neo86','ae86','neo86'])document.querySelector('[data-vehicle="'+id+'"]').click();
     });

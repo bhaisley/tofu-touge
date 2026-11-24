@@ -28,6 +28,8 @@
   // Crown relief, bark and branchlets converge into the distant photograph.
   function forestMaterial(material, mode, eye, range, light, alternate, sky) {
     const mikuni = sky?.userData.fuji;
+    // In WebGL 1 the unlit distant tree cards share the sky's antialiasing.
+    if(mikuni)material.extensions={...material.extensions,derivatives:true};
     material.customProgramCacheKey = () => (mikuni ? 'mikuni-forest-' : 'haruna-forest-') + mode;
     material.onBeforeCompile = shader => {
       shader.uniforms.forestEye = {value: eye};

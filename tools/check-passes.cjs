@@ -6,41 +6,64 @@ const {chromium}=require('playwright');
 
 // Render just the eastern skyline at the Hirano bend. Wires and tree branches
 // legitimately cross the sky in the full scene. The wooded ridge crosses it once.
-function checkHiranoSkyline(){
+function checkHiranoSkyline(close=false){
   const w=window.testPass,T=window.THREE,width=768,height=280;
-  const scene=new T.Scene(),sky=w.sky.clone(),camera=new T.PerspectiveCamera(29,width/height,.35,2350);
+  const scene=new T.Scene(),sky=w.sky.clone(),camera=new T.PerspectiveCamera(close?4.5:29,width/height,.35,2350);
   camera.position.copy(w.course.physicalCourse.at(w.course.length-552,3.6,2));
-  camera.lookAt(camera.position.clone().add(new T.Vector3(1,.14,0)));
+  camera.lookAt(camera.position.clone().add(new T.Vector3(1,.14,close?-.2:0)));
   sky.position.copy(camera.position);scene.add(sky);
-  const target=new T.WebGLRenderTarget(width,height,{colorSpace:T.SRGBColorSpace,depthBuffer:false});
+  // Use linear bytes on both renderers. WebGL 1 does not sRGB-encode an
+  // offscreen target, which otherwise changes the predawn contrast test.
+  const target=new T.WebGLRenderTarget(width,height,{colorSpace:T.LinearSRGBColorSpace,depthBuffer:false});
   const previous=w.renderer.getRenderTarget(),pixels=new Uint8Array(width*height*4);
   try{
     w.renderer.setRenderTarget(target);w.renderer.render(scene,camera);
     w.renderer.readRenderTargetPixels(target,0,0,width,height,pixels);
   }finally{w.renderer.setRenderTarget(previous);target.dispose();}
   const green=(x,y)=>pixels[4*(width*y+x)+1];
-  let broken=0,checked=0;
+  const contour=new Float32Array(width).fill(NaN);
+  let broken=0,checked=0,sharp=0;
   for(let x=2;x<width-2;x++){
     const foot=green(x,2),skyTop=green(x,height-3),contrast=skyTop-foot;
-    if(contrast<40)continue;
+    if(contrast<20)continue;
     checked++;
-    let inSky=false;
+    const mid=foot+.5*contrast;
+    let inSky=false,previous=foot,strongest=0;
     for(let y=3;y<height-3;y++){
       const value=green(x,y);
+      strongest=Math.max(strongest,value-previous);
+      if(!Number.isFinite(contour[x]) && previous<mid && value>=mid)contour[x]=y-1+(mid-previous)/(value-previous);
       if(inSky && value<foot+.36*contrast){broken++;break;}
       if(value>foot+.65*contrast)inSky=true;
+      previous=value;
     }
+    if(strongest>.45*contrast)sharp++;
   }
-  return {broken,checked};
+  // A magnified texture-mask staircase departs sharply from the local slope.
+  // A blurred mask can hide those steps, so also check the one-pixel contrast.
+  let steps=0,spans=0;
+  for(let x=6;x<width-6;x++){
+    const chord=(contour[x-4]+contour[x+4])*.5;
+    if(!Number.isFinite(chord) || !Number.isFinite(contour[x]))continue;
+    spans++;if(Math.abs(contour[x]-chord)>1)steps++;
+  }
+  return {broken,checked,sharp,steps,spans};
 }
 
 async function main(){
-  const input=process.argv[2] || path.join(__dirname,'../Tofu Touge.html');
+  const args=process.argv.slice(2),webgl1=args.includes('--webgl1');
+  const input=args.find(arg=>arg!=='--webgl1') || path.join(__dirname,'../Tofu Touge.html');
   const offline=!/^https?:/.test(input);
   const url=offline?pathToFileURL(path.resolve(input)).href:input;
   const browser=await chromium.launch({executablePath:process.env.CHROME_BIN || undefined});
   try{
     const page=await browser.newPage({offline,viewport:{width:1040,height:650}});
+    if(webgl1)await page.addInitScript(()=>{
+      const getContext=HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext=function(type,...options){
+        return type==='webgl2'?null:getContext.call(this,type,...options);
+      };
+    });
     const errors=[];
     page.on('pageerror',e=>errors.push(e.message));
     page.on('console',m=>{if(m.type()==='error')errors.push(m.text().slice(0,400));});
@@ -86,15 +109,20 @@ async function main(){
         window.fujiContext=gl;
         return {map:w.course.mapId,direction:w.course.direction,match:w.course===d.course,
           sameContext:!previous || previous===gl,oldReleased:originalContext.isContextLost(),
-          kmh:Math.round(d.kmh),error:gl.getError()};
+          kmh:Math.round(d.kmh),error:gl.getError(),webgl2:w.renderer.capabilities.isWebGL2};
       });
       assert.equal(telemetry.map,'fuji');assert.equal(telemetry.direction,sign);
       assert(telemetry.match && telemetry.sameContext && telemetry.oldReleased && telemetry.kmh>5);
       assert.equal(telemetry.error,0);
+      if(webgl1)assert.equal(telemetry.webgl2,false);
       await page.waitForFunction(()=>testPass.sky.material.uniforms.ready.value);
       const skyline=await page.evaluate(checkHiranoSkyline);
       assert(skyline.checked>700,id+' wooded skyline must be visible');
       assert.equal(skyline.broken,0,id+' has detached terrain in the Hirano sky');
+      const detail=await page.evaluate(checkHiranoSkyline,true);
+      assert(detail.checked>400 && detail.spans>400,id+' close-up must cross the Hirano ridge');
+      assert(detail.sharp>.80*detail.checked,id+' lost detail at the edge of the ridge');
+      assert(detail.steps<.04*detail.spans,id+' has stair steps along the Hirano ridge');
       assert.match(await page.locator('#hud-course').textContent(),/MIKUNI/);
       assert((await page.locator('#remaining').textContent()).includes(sign===1?'TO DELIVERY':'TO SUMMIT'));
       await page.keyboard.press('Escape');await click('#to-menu');

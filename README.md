@@ -118,7 +118,7 @@ Run `node tools/check-forest.cjs` to verify vegetation placement and visibility 
 
 With Playwright and Chromium installed, `node tools/check-radio.cjs` exercises the offline song picker, measures audible output from all five tracks, and checks crossfades, rapid skips, pause and resume, and the saved selection. `node tools/check-touch.cjs` drives both stages and checks phone layouts, simultaneous touches, legacy records and the independent volume controls. Set `CHROME_BIN` to use an existing Chromium installation.
 
-Run `node tools/check-backlight.cjs` to measure the glass, cage clearance and flat spoiler, trace the two-tone finish behind both wheels, verify the plate mounting and check all three brake lights in both chase cameras. Run `node tools/check-passes.cjs` to check both Mikuni starts, the Hirano skyline and map switching. Run `node tools/check-garage.cjs` to exercise car selection, persistence, restarting a run and graphics-context recovery.
+Run `node tools/check-backlight.cjs` to measure the glass, cage clearance and flat spoiler, trace the two-tone finish behind both wheels, verify the plate mounting and check all three brake lights in both chase cameras. Run `node tools/check-passes.cjs` to check both Mikuni starts, the Hirano ridge at two zoom levels and map switching. Add `--webgl1` to exercise the older renderer. Run `node tools/check-garage.cjs` to exercise car selection, persistence, restarting a run and graphics-context recovery.
 
 ## Production decisions
 

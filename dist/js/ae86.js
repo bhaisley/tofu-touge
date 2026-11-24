@@ -161,7 +161,8 @@
         clearcoat:.94,clearcoatRoughness:.066,envMapIntensity:1.10}),
       trim:surface(.61,.02),cloth:surface(.93,.005),vinyl:surface(.42,.025),metal:surface(.31,.73),rim:surface(.37,.6),brakeSteel:surface(.46,.65),
       blackTrim:new THREE.MeshPhysicalMaterial({vertexColors:true,roughness:.295,clearcoat:.52,clearcoatRoughness:.15}),
-      tire:surface(.82,.015),glass:laminatedGlass(0x3a4848,.28),hatchGlass:laminatedGlass(0x293734,.38,heatedHatch()),
+      tire:surface(.82,.015),glass:laminatedGlass(0x3a4848,.28),
+      sideGlass:laminatedGlass(0x1b2224,.63),hatchGlass:laminatedGlass(0x151c1e,.74,heatedHatch()),
       marks: surface(0.54, 0.03, {
         map:marks, alphaTest: 0.28, alphaToCoverage: true,
         polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1
@@ -171,7 +172,7 @@
       fog:surface(.22,.06,{map:head,emissiveMap:head,emissive:0xffae24,emissiveIntensity:.05}),
       head:surface(.18,.08,{map:head,emissiveMap:head,emissive:0xffedd2,emissiveIntensity:1.43})
     };
-    for(const key of ['paint','blackTrim','metal','rim','glass','hatchGlass','lens'])m[key].userData.routeReflections=true;
+    for(const key of ['paint','blackTrim','metal','rim','glass','sideGlass','hatchGlass','lens'])m[key].userData.routeReflections=true;
     m.paint.userData.lacquer=true;
     return m;
   }
@@ -348,8 +349,8 @@
         const a = sill[i-1], c = sill[i];
         plane('paint', [a, c, sillBottom(c), sillBottom(a)], white);
       }
-      plane('glass', [q0, q1, q2, q3], 0xffffff, -0.004);
-      plane('glass', [w0, w1, w2, w3], 0xffffff, -0.004);
+      plane('sideGlass', [q0, q1, q2, q3], 0xffffff, -0.004);
+      plane('sideGlass', [w0, w1, w2, w3], 0xffffff, -0.004);
       for (const outline of [[q0, q1, q2, q3], [w0, w1, w2, w3]]) {
         for (let j = 0; j < outline.length; j++) {
           const n = (j + 1) % outline.length;
