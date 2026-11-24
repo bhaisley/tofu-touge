@@ -7,6 +7,8 @@
   const dawnDirection=new T.Vector3(.93,.28,.22).normalize();
   const horizonSource=`
     uniform highp sampler2D panorama;
+    uniform highp sampler2D lakeMap;
+    uniform float lakeTime;
     uniform float ready,night;
     uniform vec3 skyOrigin;
     vec4 mikuniSample(vec2 uv,vec2 local,vec2 scale) {
@@ -30,6 +32,77 @@
     }
     float mikuniHaze(float distanceM) {
       return .94*smoothstep(320.,1050.,distanceM);
+    }
+    // The two halves hold afternoon and predawn radiance from a survey eye
+    // mirrored under Yamanaka. Read shoreline coverage on the undisturbed ray.
+    vec2 lakeUV(float azimuth,float elevation) {
+      return vec2(.75*clamp((azimuth-256.)/80.,.001,.999),
+        .5*(1.-night+clamp(elevation/12.,.004,.996)));
+    }
+    vec3 lakeWind(vec2 tileCoords) {
+      vec2 tile=fract(tileCoords),scale=vec2(.125,.5);
+      vec2 uv=vec2(.8125,.25)+tile*scale;
+      #if __VERSION__ >= 300
+        return textureGrad(lakeMap,uv,dFdx(tileCoords)*scale,dFdy(tileCoords)*scale).rgb;
+      #else
+        vec2 jump=fwidth(tile);
+        return texture2D(lakeMap,uv,max(jump.x,jump.y)>.5?-8.:0.).rgb;
+      #endif
+    }
+    vec3 lakeSurface(vec3 land,vec2 bearing,float azimuth,float angle) {
+      vec2 flatUV=lakeUV(azimuth,angle);
+      vec2 dx=dFdx(flatUV),dy=dFdy(flatUV);
+      #if __VERSION__ >= 300
+        if(azimuth<259. || azimuth>334. || angle<.65 || angle>7.6)return land;
+        float mask=textureGrad(lakeMap,flatUV,dx,dy).a;
+      #else
+        float mask=texture2D(lakeMap,flatUV).a;
+      #endif
+      float edge=158./255.,aa=clamp(.5*fwidth(mask),.045,.18);
+      float water=smoothstep(edge-aa,edge+aa,mask);
+      if(water<=0.)return land;
+
+      // Project onto the same level water plane used by the survey. Wave
+      // phases stay fixed to metres of lake surface when the camera pans.
+      float down=tan(radians(angle));
+      float range=220./(down+sqrt(max(0.,down*down-440./14800000.)));
+      vec2 pos=bearing*range;
+      vec2 wind=vec2(.87462,.48481);
+      vec2 across=vec2(-wind.y,wind.x);
+      vec2 st=vec2(dot(pos,wind),dot(pos,across));
+      float t=lakeTime;
+      vec3 groups=lakeWind((st-vec2(1.7,.18)*t)/780.);
+      float open=smoothstep(.62,.975,mask);
+      float gust=mix(.19,1.,open)*(.22+.78*groups.b)*(1.-.30*night);
+      vec2 swell=lakeWind((st+7.*(groups.rg-.5)-vec2(1.5,.11)*t)/174.).rg-.5;
+      mat2 turn=mat2(.902,.432,-.432,.902);
+      vec2 chop=lakeWind((turn*st-vec2(.82,-.09)*t)/58.+.37).rg-.5;
+      vec2 localSlope=.075*swell+.042*(chop*turn);
+      vec2 slope=(wind*localSlope.x+across*localSlope.y)*(.34+1.27*gust);
+      vec3 normal=normalize(vec3(-slope.x,1.,-slope.y));
+      vec3 incident=normalize(vec3(bearing.x,-down,bearing.y));
+      vec3 reflected=reflect(incident,normal);
+      float rayAz=degrees(atan(reflected.x,-reflected.z))+360.;
+      float rayEl=degrees(asin(clamp(reflected.y,-1.,1.)));
+      vec2 uv=lakeUV(rayAz,rayEl);
+      // Integrate unresolved short ripples around the reflected ray. Their
+      // footprint is taller than it is wide at this grazing viewing angle.
+      float spread=.16+.84*gust;
+      vec2 low=lakeUV(rayAz-.10*spread,rayEl-spread),high=lakeUV(rayAz+.10*spread,rayEl+spread);
+      #if __VERSION__ >= 300
+        vec3 reflection=.50*textureGrad(lakeMap,uv,dx,dy).rgb+
+                        .25*(textureGrad(lakeMap,low,dx,dy).rgb+textureGrad(lakeMap,high,dx,dy).rgb);
+      #else
+        vec3 reflection=.50*texture2D(lakeMap,uv).rgb+.25*(texture2D(lakeMap,low).rgb+texture2D(lakeMap,high).rgb);
+      #endif
+      float cosine=clamp(dot(-incident,normal),0.,1.);
+      float fresnel=.0204+.9796*pow(1.-cosine,5.);
+      vec3 scatter=mix(vec3(.048,.095,.084),vec3(.026,.083,.112),open);
+      scatter*=mix(vec3(1.),vec3(.56,.65,.79),night);
+      // The lakebed and wet bank show through the sheltered shallow margin.
+      scatter=mix(mix(land,scatter,.48),scatter,smoothstep(edge,.87,mask));
+      vec3 surface=mix(scatter,reflection,fresnel*mix(.73,.98-.30*gust,smoothstep(edge,.89,mask)));
+      return mix(land,surface,water);
     }
     vec3 horizonColor(vec3 d) {
       vec3 fallback=mix(vec3(.32,.38,.44),vec3(.23,.37,.51),smoothstep(-.04,.62,d.y));
@@ -65,7 +138,8 @@
       vec2 nearLocal=vec2(atan(nearBearing.x,-nearBearing.y)/6.28318531,clamp(nearV,.002,.998));
       vec2 nearScale=vec2(1.,5./16.);
       vec4 shore=mikuniSample(nearLocal*nearScale,nearLocal,nearScale);
-      return mix(mix(air,mountain.rgb,mikuniCoverage(mountain.a)),shore.rgb,mikuniCoverage(shore.a));
+      vec3 land=mix(mix(air,mountain.rgb,mikuniCoverage(mountain.a)),shore.rgb,mikuniCoverage(shore.a));
+      return lakeSurface(land,nearBearing,nearLocal.x*360.+360.,-nearElevation);
     }`;
   // Long grass covers the upper traverses and several open ledges between
   // the wooded hairpins. The lower switchback faces Fuji on the return run.

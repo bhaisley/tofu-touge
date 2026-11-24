@@ -123,7 +123,7 @@
       if (mikuni) {
         // The distant tree cards share the hillside's directional haze.
         // A single blue fog colour makes whole stands glow against dark slopes.
-        for (const key of ['panorama','ready','night','skyOrigin'])
+        for (const key of ['panorama','ready','night','skyOrigin','lakeMap','lakeTime'])
           shader.uniforms[key] = sky.material.uniforms[key];
         shader.vertexShader = 'varying vec3 mikuniTreeRay;\n' + shader.vertexShader.replace('#include <project_vertex>',
           '#include <project_vertex>\n mikuniTreeRay=mvPosition.xyz*mat3(viewMatrix);');

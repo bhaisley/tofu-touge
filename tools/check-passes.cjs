@@ -50,6 +50,38 @@ function checkHiranoSkyline(close=false){
   return {broken,checked,sharp,steps,spans};
 }
 
+function checkYamanaka(){
+  const w=window.testPass,T=window.THREE,size=96;
+  const scene=new T.Scene(),sky=w.sky.clone(),camera=new T.PerspectiveCamera(.55,1,.35,2350);
+  const clock=sky.material.uniforms.lakeTime,previousTime=clock.value;
+  camera.position.copy(sky.material.uniforms.skyOrigin.value);
+  sky.position.copy(camera.position);scene.add(sky);
+  const target=new T.WebGLRenderTarget(size,size,{colorSpace:T.LinearSRGBColorSpace,depthBuffer:false});
+  const previous=w.renderer.getRenderTarget();
+  function imageAt(time){
+    clock.value=time;w.renderer.render(scene,camera);
+    const pixels=new Uint8Array(size*size*4);
+    w.renderer.readRenderTargetPixels(target,0,0,size,size,pixels);
+    return pixels;
+  }
+  function patch(azimuth,elevation){
+    const a=T.MathUtils.degToRad(azimuth),e=T.MathUtils.degToRad(elevation);
+    camera.lookAt(camera.position.clone().add(new T.Vector3(Math.sin(a)*Math.cos(e),Math.sin(e),-Math.cos(a)*Math.cos(e))));
+    const start=imageAt(12),later=imageAt(15.4);
+    let motion=0,green=0;
+    for(let i=1;i<start.length;i+=4){
+      green+=start[i];motion+=Math.abs(later[i]-start[i]);
+    }
+    return {motion:motion/(size*size),green:green/(size*size)};
+  }
+  try{
+    w.renderer.setRenderTarget(target);
+    // Look across the open lake, into a cove that reflects a wooded ridge,
+    // and at dry hillside on that same bearing above the far bank.
+    return {open:patch(282,-3.2),cove:patch(315,-3.7),dry:patch(315,1)};
+  }finally{clock.value=previousTime;w.renderer.setRenderTarget(previous);target.dispose();}
+}
+
 async function main(){
   const args=process.argv.slice(2),webgl1=args.includes('--webgl1');
   const input=args.find(arg=>arg!=='--webgl1') || path.join(__dirname,'../Tofu Touge.html');
@@ -123,6 +155,12 @@ async function main(){
       assert(detail.checked>400 && detail.spans>400,id+' close-up must cross the Hirano ridge');
       assert(detail.sharp>.80*detail.checked,id+' lost detail at the edge of the ridge');
       assert(detail.steps<.04*detail.spans,id+' has stair steps along the Hirano ridge');
+      const waterTime=await page.evaluate(()=>testPass.sky.material.uniforms.lakeTime.value);
+      await page.waitForFunction(t=>testPass.sky.material.uniforms.lakeTime.value>t,waterTime);
+      const lake=await page.evaluate(checkYamanaka);
+      assert(lake.open.green>lake.cove.green+15,id+' must reflect bright sky and a darker opposite shore');
+      assert(lake.open.motion>.2 && lake.cove.motion>.2,id+' must show wind moving across the lake');
+      assert.equal(lake.dry.motion,0,id+' lake animation leaked onto the hillside');
       assert.match(await page.locator('#hud-course').textContent(),/MIKUNI/);
       assert((await page.locator('#remaining').textContent()).includes(sign===1?'TO DELIVERY':'TO SUMMIT'));
       await page.keyboard.press('Escape');await click('#to-menu');

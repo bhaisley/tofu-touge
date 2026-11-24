@@ -110,7 +110,8 @@
     let night=false;
     if(!atlas.texture){
       const file=course.mapId==='fuji'?'fuji-reflections.webp':'haruna-reflections.webp';
-      atlas.texture=new T.TextureLoader().load(window.TougeArtURLs?.[file]||'assets/art/'+file,map=>{
+      const url=window.TougeArtURLs?.[file]||'assets/art/'+file+(course.mapId==='fuji'?'?v=0.4.2':'');
+      atlas.texture=new T.TextureLoader().load(url,map=>{
         atlas.bounce=diffuseProbes(map.image,grid);
       });
       // Every car on the same pass uses the same north-up probe captures.

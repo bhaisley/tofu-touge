@@ -18,7 +18,7 @@ In this seven-second gameplay clip, the AE86 reaches 30.7° of slip on a wet Har
 
 ![The playable NEO86 on Mikuni Pass facing Mount Fuji in late afternoon and blue hour](docs/media/mikuni-pass.jpg)
 
-Descend from Myojin ridge past the Panorama-dai overlook to the Hirano switchbacks in late afternoon. For the return run, leave Hirano before sunrise and climb 186 m with the headlights on. Both deliveries follow the same 4.60 km of asphalt. The bends are original to the game. The length, elevation change and location of the overlook follow Yamanashi’s published cycling profile. [Drive the descent](https://bhaisley.github.io/tofu-touge/dist/?stage=fuji-downhill) · [Drive the ascent](https://bhaisley.github.io/tofu-touge/dist/?stage=fuji-uphill) · [Yamanashi course profile](https://www.yamanashi-kankou.jp/zenryoku/hill-climb/hyakusaka/course/921/index.html)
+Descend from Myojin ridge past the Panorama-dai overlook to the Hirano switchbacks in late afternoon. For the return run, leave Hirano before sunrise and climb 186 m with the headlights on. Wind ripples break up the reflections of the opposite bank on Lake Yamanaka. Both deliveries follow the same 4.60 km of asphalt. The bends are original to the game. The length, elevation change and location of the overlook follow Yamanashi’s published cycling profile. [Drive the descent](https://bhaisley.github.io/tofu-touge/dist/?stage=fuji-downhill) · [Drive the ascent](https://bhaisley.github.io/tofu-touge/dist/?stage=fuji-uphill) · [Yamanashi course profile](https://www.yamanashi-kankou.jp/zenryoku/hill-climb/hyakusaka/course/921/index.html)
 
 ## Haruna after dark
 
@@ -118,7 +118,7 @@ Run `node tools/check-forest.cjs` to verify vegetation placement and visibility 
 
 With Playwright and Chromium installed, `node tools/check-radio.cjs` exercises the offline song picker, measures audible output from all five tracks, and checks crossfades, rapid skips, pause and resume, and the saved selection. `node tools/check-touch.cjs` drives both stages and checks phone layouts, simultaneous touches, legacy records and the independent volume controls. Set `CHROME_BIN` to use an existing Chromium installation.
 
-Run `node tools/check-backlight.cjs` to measure the glass, cage clearance and flat spoiler, trace the two-tone finish behind both wheels, verify the plate mounting and check all three brake lights in both chase cameras. Run `node tools/check-passes.cjs` to check both Mikuni starts, the Hirano ridge at two zoom levels and map switching. Add `--webgl1` to exercise the older renderer. Run `node tools/check-garage.cjs` to exercise car selection, persistence, restarting a run and graphics-context recovery.
+Run `node tools/check-backlight.cjs` to measure the glass, cage clearance and flat spoiler, trace the two-tone finish behind both wheels, verify the plate mounting and check all three brake lights in both chase cameras. Run `node tools/check-passes.cjs` to check both Mikuni starts, the Hirano ridge at two zoom levels, moving reflections on Lake Yamanaka, and map switching. Add `--webgl1` to exercise the older renderer. Run `node tools/check-garage.cjs` to exercise car selection, persistence, restarting a run and graphics-context recovery.
 
 ## Production decisions
 

@@ -85,6 +85,7 @@
       side: T.BackSide, depthWrite: false, fog: false, toneMapped: false,
       extensions:{derivatives:true},
       uniforms: {panorama: {value: null}, ready: {value: 0}, sunlight: {value:keyLight}, radiance: {value: 0},
+        ...(fuji?{lakeMap:{value:null},lakeTime:{value:0}}:{}),
         night:{value:0},moonlight:{value:moonlight},skyOrigin:{value:fuji?course.at(course.splits[0]-22):new T.Vector3()}},
       vertexShader: `varying vec3 direction;
         void main() {
@@ -151,12 +152,13 @@
     sky.userData.fuji=fuji;sky.userData.horizonSource=landscape;
     scene.add(sky);
     const environments=[null,null],panoramas=[null,null];
+    let lakeLoaded=!fuji;
     function setNight(night){
       const key=night?1:0;
       material.uniforms.night.value=key;
       sky.name=fuji?(night?'Mikuni blue hour':'Mikuni afternoon'):(night?'Moon above Haruna Pass':'Haruna dawn');
       material.uniforms.panorama.value=panoramas[fuji?key:0];
-      material.uniforms.ready.value=material.uniforms.panorama.value?1:0;
+      material.uniforms.ready.value=material.uniforms.panorama.value && lakeLoaded?1:0;
       if(!material.uniforms.ready.value){scene.environment=null;return;}
       if(!environments[key]){
         const capture = new T.Scene();
@@ -175,10 +177,22 @@
       scene.environment=environments[key].texture;
     }
     sky.userData.setNight=setNight;
+    if(fuji){
+      new T.TextureLoader().load(window.TougeArtURLs?.['mikuni-lake.webp']||'assets/art/mikuni-lake.webp',texture=>{
+        if(renderer.getContext().isContextLost())return;
+        texture.colorSpace=T.SRGBColorSpace;
+        material.uniforms.lakeMap.value=texture;lakeLoaded=true;
+        setNight(material.uniforms.night.value===1);
+      },undefined,()=>{
+        // The mountain and sky can still load if the lake asset is unavailable.
+        if(renderer.getContext().isContextLost())return;
+        lakeLoaded=true;setNight(material.uniforms.night.value===1);
+      });
+    }
     const files=fuji?['mikuni-afternoon-horizon.webp','mikuni-blue-hour-horizon.webp']:['haruna-sky.webp'];
     files.forEach((file,index)=>{
       // A cached skyline from the earlier atlas layout uses different UVs.
-      const url=window.TougeArtURLs?.[file]||'assets/art/'+file+(fuji?'?layout=2':'');
+      const url=window.TougeArtURLs?.[file]||'assets/art/'+file+(fuji?'?layout=3':'');
       new T.TextureLoader().load(url,texture=>{
         if(renderer.getContext().isContextLost())return;
         texture.colorSpace=T.SRGBColorSpace;texture.wrapS=T.RepeatWrapping;panoramas[index]=texture;
@@ -198,6 +212,7 @@
       scan(shader);
       const uniforms = sky.material.uniforms;
       for(const key of ['panorama','ready','night','moonlight','skyOrigin'])shader.uniforms[key]=uniforms[key];
+      if(sky.userData.fuji){shader.uniforms.lakeMap=uniforms.lakeMap;shader.uniforms.lakeTime=uniforms.lakeTime;}
       shader.uniforms.cliff = {value:cliff}; shader.uniforms.cliffSurface = {value:cliffSurface};
       Object.assign(shader.uniforms,grassMaps);
       const surfaceVaryings = 'varying float passRim, passGrass; varying vec3 passLand; varying vec3 passSlope;\n';

@@ -735,6 +735,7 @@
     }
     render(dt,c,simulate,walkaround=null,orbit=null){
       this.elapsed+=dt;
+      if(this.sky.userData.fuji)this.sky.material.uniforms.lakeTime.value=this.elapsed;
       this.car.setDisplayMode(!!walkaround);
       const placed=c.placementId!==this.placementId;
       const viewCut=!this.cameraReady || placed || this.wasWalkaround!==!!walkaround;

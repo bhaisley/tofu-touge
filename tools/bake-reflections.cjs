@@ -17,7 +17,7 @@ async function bake() {
     page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
     // Car materials are outside the capture. A first bake can start with an empty asset directory entry.
     await page.route('**/game.js', route => route.fulfill({contentType: 'text/javascript', body: ''}));
-    await page.route('**/' + filename, route => route.fulfill({contentType: 'image/png',
+    await page.route(url => url.pathname.endsWith('/' + filename), route => route.fulfill({contentType: 'image/png',
       body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')}));
     await page.goto(source);
     const report = await page.evaluate(async map => {
