@@ -175,7 +175,7 @@
       scene.environment=environments[key].texture;
     }
     sky.userData.setNight=setNight;
-    const files=fuji?['mikuni-afternoon-sky.webp','mikuni-blue-hour-sky.webp']:['haruna-sky.webp'];
+    const files=fuji?['mikuni-afternoon-horizon.webp','mikuni-blue-hour-horizon.webp']:['haruna-sky.webp'];
     files.forEach((file,index)=>{
       new T.TextureLoader().load(window.TougeArtURLs?.[file]||'assets/art/'+file,texture=>{
         if(renderer.getContext().isContextLost())return;
@@ -234,7 +234,9 @@
             normal=normalize(mix(normal,mat3(viewMatrix)*stoneNormal,exposure));
           }`)
         .replace('#include <fog_fragment>', `#include <fog_fragment>
-          float atmosphericBlend=max(passRim,.50*smoothstep(225.,520.,length(passLand-cameraPosition)));
+          float rangeM=length(passLand-cameraPosition);
+          float atmosphericBlend=max(passRim,.50*smoothstep(225.,520.,rangeM));
+          ${sky.userData.fuji?'atmosphericBlend=max(atmosphericBlend,mikuniHaze(rangeM));':''}
           if(atmosphericBlend>.001){
             vec3 distant = horizonColor(normalize(passLand-cameraPosition));
             gl_FragColor.rgb = mix(gl_FragColor.rgb,linearToOutputTexel(vec4(distant,1.)).rgb,atmosphericBlend);

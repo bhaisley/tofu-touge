@@ -406,7 +406,7 @@
       yield;
       yield* window.addRockCuts.steps(this.scene,course,forestFloor,groundAt);
       yield;
-      this.forest=yield* window.addForest.steps(this.scene,course,groundAt,forestFloor,this.walls);
+      this.forest=yield* window.addForest.steps(this.scene,course,groundAt,forestFloor,this.walls,this.sky);
       this.roadside=yield* window.addRoadside.steps(this.scene,course);
       this.rig=new T.Group();this.rig.rotation.order='YXZ';this.scene.add(this.rig);
       this.car=yield* TougeNeo86.create.steps();this.rig.add(this.car.group);

@@ -26,8 +26,9 @@
 
   // Both the reflection camera and the shadow pass use the driver's eye for LOD.
   // Crown relief, bark and branchlets converge into the distant photograph.
-  function forestMaterial(material, mode, eye, range, light, alternate) {
-    material.customProgramCacheKey = () => 'haruna-forest-' + mode;
+  function forestMaterial(material, mode, eye, range, light, alternate, sky) {
+    const mikuni = sky?.userData.fuji;
+    material.customProgramCacheKey = () => (mikuni ? 'mikuni-forest-' : 'haruna-forest-') + mode;
     material.onBeforeCompile = shader => {
       shader.uniforms.forestEye = {value: eye};
       shader.uniforms.forestRange = {value: range};
@@ -117,6 +118,20 @@
       if (leaves) shader.fragmentShader = shader.fragmentShader.replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
         // Thin leaves transmit skylight even when the lower face points towards the road.
         reflectedLight.indirectDiffuse += diffuseColor.rgb * canopyFill * ${blade?'vec3(.63,.71,.55)':mode==='thicket' ? 'vec3(.46,.50,.47)' : 'vec3(.32,.35,.34)'};`);
+      if (mikuni) {
+        // The distant tree cards share the hillside's directional haze.
+        // A single blue fog colour makes whole stands glow against dark slopes.
+        for (const key of ['panorama','ready','night','skyOrigin'])
+          shader.uniforms[key] = sky.material.uniforms[key];
+        shader.vertexShader = 'varying vec3 mikuniTreeRay;\n' + shader.vertexShader.replace('#include <project_vertex>',
+          '#include <project_vertex>\n mikuniTreeRay=mvPosition.xyz*mat3(viewMatrix);');
+        shader.fragmentShader = 'varying vec3 mikuniTreeRay;\n' + sky.userData.horizonSource + shader.fragmentShader.replace('#include <fog_fragment>', `#include <fog_fragment>
+          float haze=mikuniHaze(length(mikuniTreeRay));
+          if(haze>.001) {
+            vec3 backdrop=horizonColor(normalize(mikuniTreeRay));
+            gl_FragColor.rgb=mix(gl_FragColor.rgb,linearToOutputTexel(vec4(backdrop,1.)).rgb,haze);
+          }`);
+      }
     };
     return material;
   }
@@ -377,7 +392,7 @@
     mesh.setColorAt(index, tint);
   }
 
-  function* forestMeshes(group, trees, small, grasses, startEye,fuji) {
+  function* forestMeshes(group, trees, small, grasses, startEye,fuji,sky) {
     const eye = startEye.clone();
     const light={fill:{value:1},direction:{value:new T.Vector2(.79,-.61)}};
     const mobile = window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 760;
@@ -410,7 +425,7 @@
     sheet.translate(0, .5, 0);
     flat.translate(0,.5,0);
     const farMat = forestMaterial(new T.MeshBasicMaterial({map: treesMap,
-      alphaTest: .31, side: T.DoubleSide, alphaToCoverage: true}), 'portrait', eye, lod, light, alternate);
+      alphaTest: .31, side: T.DoubleSide, alphaToCoverage: true}), 'portrait', eye, lod, light, alternate, sky);
     const farDepth = forestMaterial(new T.MeshDepthMaterial({depthPacking: T.RGBADepthPacking,
       map: treesMap, alphaTest: .52, side: T.DoubleSide}), 'portrait-depth', eye, lod, light, alternate);
     const matrix = new T.Matrix4(), tint = new T.Color();
@@ -891,7 +906,7 @@
     }
   }
 
-  function* forestSteps(scene, course, groundAt, forestFloor, walls) {
+  function* forestSteps(scene, course, groundAt, forestFloor, walls, sky) {
     const group = new T.Group();
     const fuji=course.mapId==='fuji';
     group.name = fuji?'Mikuni woodland and susuki meadows':'Haruna sugi forest';
@@ -1012,14 +1027,14 @@
       grassCover.needsUpdate=true;
     }
     const grasses=yield* TougeGrass.scatterSteps(course,forestFloor,walls,drawnHeight,randomStream(0x4a718));
-    yield* forestMeshes(group, trees, small, grasses, course.at(course.start),fuji);
+    yield* forestMeshes(group, trees, small, grasses, course.at(course.start),fuji,sky);
     yield* addCanopyShade(group, shadePatches, drawnHeight, groundAt);
     scene.add(group);
     return group;
   }
 
-  function addForest(scene, course, groundAt, forestFloor, walls) {
-    const steps=forestSteps(scene,course,groundAt,forestFloor,walls);
+  function addForest(scene, course, groundAt, forestFloor, walls, sky) {
+    const steps=forestSteps(scene,course,groundAt,forestFloor,walls,sky);
     let result;
     do {result=steps.next();} while(!result.done);
     return result.value;

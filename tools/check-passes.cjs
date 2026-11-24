@@ -4,6 +4,36 @@ const path=require('node:path');
 const {pathToFileURL}=require('node:url');
 const {chromium}=require('playwright');
 
+// Render just the eastern skyline at the Hirano bend. Wires and tree branches
+// legitimately cross the sky in the full scene. The wooded ridge crosses it once.
+function checkHiranoSkyline(){
+  const w=window.testPass,T=window.THREE,width=768,height=280;
+  const scene=new T.Scene(),sky=w.sky.clone(),camera=new T.PerspectiveCamera(29,width/height,.35,2350);
+  camera.position.copy(w.course.physicalCourse.at(w.course.length-552,3.6,2));
+  camera.lookAt(camera.position.clone().add(new T.Vector3(1,.14,0)));
+  sky.position.copy(camera.position);scene.add(sky);
+  const target=new T.WebGLRenderTarget(width,height,{colorSpace:T.SRGBColorSpace,depthBuffer:false});
+  const previous=w.renderer.getRenderTarget(),pixels=new Uint8Array(width*height*4);
+  try{
+    w.renderer.setRenderTarget(target);w.renderer.render(scene,camera);
+    w.renderer.readRenderTargetPixels(target,0,0,width,height,pixels);
+  }finally{w.renderer.setRenderTarget(previous);target.dispose();}
+  const green=(x,y)=>pixels[4*(width*y+x)+1];
+  let broken=0,checked=0;
+  for(let x=2;x<width-2;x++){
+    const foot=green(x,2),skyTop=green(x,height-3),contrast=skyTop-foot;
+    if(contrast<40)continue;
+    checked++;
+    let inSky=false;
+    for(let y=3;y<height-3;y++){
+      const value=green(x,y);
+      if(inSky && value<foot+.36*contrast){broken++;break;}
+      if(value>foot+.65*contrast)inSky=true;
+    }
+  }
+  return {broken,checked};
+}
+
 async function main(){
   const input=process.argv[2] || path.join(__dirname,'../Tofu Touge.html');
   const offline=!/^https?:/.test(input);
@@ -61,6 +91,10 @@ async function main(){
       assert.equal(telemetry.map,'fuji');assert.equal(telemetry.direction,sign);
       assert(telemetry.match && telemetry.sameContext && telemetry.oldReleased && telemetry.kmh>5);
       assert.equal(telemetry.error,0);
+      await page.waitForFunction(()=>testPass.sky.material.uniforms.ready.value);
+      const skyline=await page.evaluate(checkHiranoSkyline);
+      assert(skyline.checked>700,id+' wooded skyline must be visible');
+      assert.equal(skyline.broken,0,id+' has detached terrain in the Hirano sky');
       assert.match(await page.locator('#hud-course').textContent(),/MIKUNI/);
       assert((await page.locator('#remaining').textContent()).includes(sign===1?'TO DELIVERY':'TO SUMMIT'));
       await page.keyboard.press('Escape');await click('#to-menu');
@@ -73,7 +107,7 @@ async function main(){
     await click('#start-btn');await state('racing');
     const returned=await page.evaluate(()=>[testPass.course.mapId,testDrive.course===testPass.course]);
     assert.deepEqual(returned,['haruna',true]);assert.deepEqual(errors,[]);
-    console.log('Both Mikuni starts and chase cameras passed. Reversing reused the world, changing mountains released its context, and the menu retained the selected stage and original Haruna record.');
+    console.log('Both Mikuni starts, chase cameras and Hirano skylines passed. Reversing reused the world, changing mountains released its context, and the menu retained the selected stage and original Haruna record.');
   }finally{await browser.close();}
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

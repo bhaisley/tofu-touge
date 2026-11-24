@@ -2,7 +2,8 @@
 
 Pass a directory containing the two SRTMGL1 .hgt.zip files or unzipped .hgt files.
 The original 1 arc-second tiles are available at https://step.esa.int/auxdata/dem/SRTMGL1/.
-The bake needs NumPy and Pillow. Output alpha stores distance for the moving camera.
+The bake needs NumPy and Pillow. Each atlas holds an opaque distant panorama
+above a cutout of the nearby terrain, with previously hidden scenery behind it.
 """
 from argparse import ArgumentParser
 from pathlib import Path
@@ -17,7 +18,9 @@ LAT, LON, EYE = 35.4126, 138.9094, 1094.
 DEG = np.pi / 180
 EAST = 111320 * np.cos(LAT * DEG)
 NORTH = 110940
-BOTTOM, TOP = -21., 62.
+# Atlas layout shared with dist/js/fuji.js, from the top of the image.
+FAR_BOTTOM, FAR_TOP = -8., 62.
+NEAR_BOTTOM, NEAR_TOP = -21., 19.
 
 
 def read_tile(folder, name):
@@ -65,9 +68,10 @@ def noise(x, y, period):
     return mix(mix(hash_at(0, 0), hash_at(1, 0), u), mix(hash_at(0, 1), hash_at(1, 1), u), v)
 
 
-def background(w, h, blue):
+def background(w, elevations, blue):
+    h = len(elevations)
     az = np.broadcast_to(np.arange(w)[None, :] * 360 / w, (h, w))
-    alt = np.broadcast_to(TOP - (np.arange(h)[:, None] + .5) * (TOP-BOTTOM) / h, (h,w))
+    alt = np.broadcast_to(elevations[:, None], (h,w))
     sun = 100 if blue else 238
     elevation = -4.5 if blue else 14.1
     ang = (az - sun + 180) % 360 - 180
@@ -102,22 +106,19 @@ def background(w, h, blue):
     return np.clip(sky,0,1).astype(np.float32)
 
 
-def bake(dem, width, height, folder):
-    fields = [background(width,height,blue) for blue in (False,True)]
+def render_band(dem, width, height, bottom, top, ranges, near):
+    elevations = top - (np.arange(height) + .5) * (top - bottom) / height
+    fields = [np.zeros((height,width,3),dtype=np.float32) if near else background(width,elevations,blue)
+              for blue in (False,True)]
     alpha = np.full((height,width),255,dtype=np.uint8)
-    elevations = TOP-(np.arange(height)+.5)*(TOP-BOTTOM)/height
-    # Angular resolution matters at the lake and the summit. Distant skyline
-    # triangles can span longer steps, where relief is already softened by haze.
-    ranges = np.r_[np.arange(810,9200,16),np.arange(9200,24001,22),np.arange(24050,50001,63)]
     for start in range(0,width,96):
         end = min(start+96,width)
         az = np.arange(start,end)*2*np.pi/width
         vx,vz = np.sin(az), -np.cos(az)
         r = ranges[:,None]
         h = dem(r*vx,r*vz)
-        # Omit the first foreground ridge. The game provides a real-time
-        # graded hillside, road, vegetation and lookout within this envelope.
-        # The curvature correction becomes visible on the far ridgelines.
+        # Raycast each distance band independently. This also paints the
+        # slopes and sky revealed when the near ridge shifts with the camera.
         angles = np.arctan2(h - EYE - r*r/14800000, r)/DEG
         envelope = np.maximum.accumulate(angles,axis=0)
         ids = np.array([np.searchsorted(col,elevations,side="left") for col in envelope.T]).T
@@ -141,7 +142,8 @@ def bake(dem, width, height, folder):
         snowline = 2520 + 123*dx - 142*dz + 390*(macro-.5) + 175*(mid-.5) + np.clip(convex*14,-380,480)
         snow = smooth(snowline,snowline+120+75*mid,a)*(1-smooth(12600,14800,radial))
         scoria=smooth(1730,2590,a)*(1-smooth(11000,15200,radial))
-        alpha[:,start:end]=np.where(seen,np.rint(255*(1-.67*np.sqrt(800/np.maximum(810,dist)))),255)
+        if near:
+            alpha[:,start:end] = seen.astype(np.uint8) * 255
         for k,field in enumerate(fields):
             blue = (k==1)
             direction=np.array([.806,.22,.55]) if blue else np.array([-.825,.244,.512])
@@ -172,8 +174,21 @@ def bake(dem, width, height, folder):
             land=np.where(lake[...,None],water+ripple[...,None],land)
             pane=field[:,start:end]
             pane[seen]=np.clip(land[seen],0,1)
-    for k,stem in enumerate(("mikuni-afternoon-sky","mikuni-blue-hour-sky")):
-        img=np.dstack((np.clip(np.rint(fields[k]*255),0,255).astype(np.uint8),alpha))
+    return [np.dstack((np.clip(np.rint(field*255),0,255).astype(np.uint8),alpha)) for field in fields]
+
+
+def bake(dem, width, height, folder):
+    if height % 8:
+        raise ValueError("The atlas height must be divisible by eight.")
+    near_height = height * 3 // 8
+    # The break lies past Lake Yamanaka and in front of Fuji. Start the near
+    # rays below the survey eye so low views sample the actual hillside.
+    near_ranges = np.r_[np.arange(8,162,3),np.arange(162,810,8),np.arange(810,6500,16),6500.]
+    far_ranges = np.r_[np.arange(6500,9200,16),np.arange(9200,24001,22),np.arange(24050,50001,63)]
+    far = render_band(dem,width,height-near_height,FAR_BOTTOM,FAR_TOP,far_ranges,False)
+    near = render_band(dem,width,near_height,NEAR_BOTTOM,NEAR_TOP,near_ranges,True)
+    for k,stem in enumerate(("mikuni-afternoon-horizon","mikuni-blue-hour-horizon")):
+        img = np.concatenate((far[k],near[k]),axis=0)
         dest=folder/(stem+".webp")
         Image.fromarray(img).save(dest,quality=90,method=6,exact=True)
         print(stem, dest.stat().st_size,flush=True)

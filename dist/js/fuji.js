@@ -1,5 +1,5 @@
-/* Surveyed Mikuni horizon. The two plates share one SRTM elevation projection
-   from Panorama-dai. Depth in alpha moves the nearer shore against Fuji. */
+/* Surveyed Mikuni horizon from Panorama-dai. Each time of day has the same
+   two independently raycast SRTM layers. See tools/bake-fuji-panorama.py. */
 (() => {
   'use strict';
   const T=THREE;
@@ -9,23 +9,47 @@
     uniform sampler2D panorama;
     uniform float ready,night;
     uniform vec3 skyOrigin;
-    vec2 mikuniUv(vec3 d) {
-      float az=atan(d.x,-d.z)/6.28318531;
-      float el=asin(clamp(d.y,-1.,1.));
-      return vec2(fract(az),clamp((el+.36651914)/1.44862328,.001,.999));
+    vec4 mikuniBand(vec2 bearing,float v) {
+      float u=atan(bearing.x,-bearing.y)/6.28318531;
+      vec2 uv=vec2(u,v);
+      // Longitude repeats. A pixel crossing +/-180 degrees still covers
+      // its neighbours' few texels on the atlas, even in a reflection.
+      #if __VERSION__ >= 300
+        vec2 dx=dFdx(uv),dy=dFdy(uv);
+        dx.x-=floor(dx.x+.5);
+        dy.x-=floor(dy.x+.5);
+        return textureGrad(panorama,uv,dx,dy);
+      #else
+        return texture2D(panorama,uv,abs(u)>.49?-12.:0.);
+      #endif
+    }
+    float mikuniHaze(float distanceM) {
+      return .94*smoothstep(320.,1050.,distanceM);
     }
     vec3 horizonColor(vec3 d) {
       vec3 fallback=mix(vec3(.32,.38,.44),vec3(.23,.37,.51),smoothstep(-.04,.62,d.y));
       if(night>.5)fallback*=vec3(.57,.52,.64);
       if(ready<.5)return fallback;
-      // The road is a compressed interpretation of the pass. Use a fraction
-      // of its displacement for the distant view; the foreground is full 3D.
-      vec3 delta=cameraPosition-skyOrigin;
-      delta=clamp(delta,vec3(-440.,-68.,-440.),vec3(440.,68.,440.))*.50;
-      vec3 initial=normalize(d+delta/17500.);
-      vec4 horizon=texture2D(panorama,mikuniUv(initial));
-      float invRange=pow(max(0.,1.-horizon.a)/.67,2.)/800.;
-      return texture2D(panorama,mikuniUv(normalize(d+delta*invRange))).rgb;
+      float horizontal=max(length(d.xz),.00001);
+      vec2 bearing=horizontal>.00001?d.xz/horizontal:vec2(0.,-1.);
+      float elevation=degrees(asin(clamp(d.y,-1.,1.)));
+      float farV=clamp((elevation+8.)/70.,.001,.999);
+      vec3 farColor=mikuniBand(bearing,.375+.625*farV).rgb;
+      if(elevation>22.)return farColor;
+
+      // The near 6.5 km of surveyed terrain is a cutout on a 3.2 km
+      // cylinder. Each viewing bearing hits it once at any camera position.
+      // Revealing a slope exposes the independently baked far panorama.
+      vec3 eye=clamp(cameraPosition-skyOrigin,vec3(-440.,-68.,-440.),vec3(440.,68.,440.))*(.50/3200.);
+      float along=dot(eye.xz,bearing);
+      float travel=sqrt(1.-dot(eye.xz,eye.xz)+along*along)-along;
+      vec2 nearBearing=eye.xz+travel*bearing;
+      float nearElevation=degrees(atan(eye.y+travel*d.y/horizontal));
+      float nearV=clamp((nearElevation+21.)/40.,.001,.97);
+      vec4 shore=mikuniBand(nearBearing,.375*nearV);
+      // Covered samples are opaque. Empty samples contribute zero RGB,
+      // so linear filtering gives premultiplied coverage at the ridgeline.
+      return shore.rgb+farColor*(1.-shore.a);
     }`;
   // Long grass covers the upper traverses and several open ledges between
   // the wooded hairpins. The lower switchback faces Fuji on the return run.
