@@ -330,44 +330,45 @@
       c.restore();
     });
   }
+  function laminatedGlass(tint,absorption,map=null){
+    const pane=new T.MeshPhysicalMaterial({vertexColors:true,roughness:.035,metalness:0,color:tint,map,ior:1.52,transparent:true,opacity:absorption,side:T.DoubleSide,
+      depthWrite:false,envMapIntensity:1.40,specularIntensity:1});
+    pane.forceSinglePass=true;
+    pane.onBeforeCompile=shader=>{
+      shader.fragmentShader=shader.fragmentShader
+        .replace('#include <map_fragment>',`
+          float innerPrint = 0.;
+          #ifdef USE_MAP
+            vec4 ink = texture2D(map, vMapUv);
+            innerPrint = ink.a;
+            diffuseColor.rgb = mix(diffuseColor.rgb, ink.rgb, innerPrint);
+          #endif`)
+        .replace('#include <opaque_fragment>',`
+        // Front surface reflection plus the return through the back surface.
+        // The tint absorbs transmitted light and the printed frit sits inside it.
+        float cosView = abs(dot(normal, geometryViewDir));
+        float faceR = .0426 + .9574 * pow(1. - min(1., cosView), 5.);
+        float pathLength = inversesqrt(1. - (1. - cosView*cosView) / (1.52*1.52));
+        float through = pow(1. - opacity, pathLength) * (1. - innerPrint);
+        float internalR = faceR * through * through;
+        float returned = faceR + (1. - faceR)*(1. - faceR)*internalR / (1. - faceR*internalR + .0001);
+        float transmittance = through*(1. - faceR)*(1. - faceR) / (1. - faceR*internalR + .0001);
+        float layer = 1. - transmittance;
+        vec3 skyReturn = vec3(0.);
+        #if defined(USE_ENVMAP) && defined(RE_IndirectSpecular)
+          skyReturn = returned * radiance;
+        #endif
+        vec3 printLight = mix(diffuseColor.rgb * .55, totalDiffuse, innerPrint);
+        outgoingLight = (skyReturn + reflectedLight.directSpecular + (layer-returned)*printLight) / max(layer,.001);
+        diffuseColor.a = layer;
+        #include <opaque_fragment>`);
+    };
+    return pane;
+  }
   function carMaterials() {
     const standard=(roughness,metalness,extra={})=>new T.MeshStandardMaterial({vertexColors:true,roughness,metalness,...extra});
     const physical=(roughness,metalness,extra={})=>new T.MeshPhysicalMaterial({vertexColors:true,roughness,metalness,...extra});
-    const glass=(tint,absorption,map=null)=>{
-      const pane=physical(.035,0,{color:tint,map,ior:1.52,transparent:true,opacity:absorption,side:T.DoubleSide,
-        depthWrite:false,envMapIntensity:1.40,specularIntensity:1});
-      pane.forceSinglePass=true;
-      pane.onBeforeCompile=shader=>{
-        shader.fragmentShader=shader.fragmentShader
-          .replace('#include <map_fragment>',`
-            float innerPrint = 0.;
-            #ifdef USE_MAP
-              vec4 ink = texture2D(map, vMapUv);
-              innerPrint = ink.a;
-              diffuseColor.rgb = mix(diffuseColor.rgb, ink.rgb, innerPrint);
-            #endif`)
-          .replace('#include <opaque_fragment>',`
-          // Front surface reflection plus the return through the back surface.
-          // The tint absorbs transmitted light and the printed frit sits inside it.
-          float cosView = abs(dot(normal, geometryViewDir));
-          float faceR = .0426 + .9574 * pow(1. - min(1., cosView), 5.);
-          float pathLength = inversesqrt(1. - (1. - cosView*cosView) / (1.52*1.52));
-          float through = pow(1. - opacity, pathLength) * (1. - innerPrint);
-          float internalR = faceR * through * through;
-          float returned = faceR + (1. - faceR)*(1. - faceR)*internalR / (1. - faceR*internalR + .0001);
-          float transmittance = through*(1. - faceR)*(1. - faceR) / (1. - faceR*internalR + .0001);
-          float layer = 1. - transmittance;
-          vec3 skyReturn = vec3(0.);
-          #if defined(USE_ENVMAP) && defined(RE_IndirectSpecular)
-            skyReturn = returned * radiance;
-          #endif
-          vec3 printLight = mix(diffuseColor.rgb * .55, totalDiffuse, innerPrint);
-          outgoingLight = (skyReturn + reflectedLight.directSpecular + (layer-returned)*printLight) / max(layer,.001);
-          diffuseColor.a = layer;
-          #include <opaque_fragment>`);
-      };
-      return pane;
-    };
+    const glass=laminatedGlass;
     const lamp=(color,emissive,intensity,roughness)=>standard(roughness,.08,{color,emissive,emissiveIntensity:intensity});
     const m={
       // Fine pearl in the color coat gives a broad reflection underneath the
@@ -458,6 +459,7 @@
     }
   }
 
+  window.TougeCarGeometry={GeometryBatch,box,rod,tube,texture,laminatedGlass,staged:model.staged};
   model.create=model.staged(function* createGR86() {
     const group=new T.Group();group.name='Toyota GR86 · NEO86';
     const suspension=new T.Group();suspension.name='Sprung chassis';suspension.rotation.order='ZXY';

@@ -8,12 +8,13 @@
 var output = "TOFU_SFX_RAW".getenv;
 var options = ServerOptions.new.numOutputBusChannels_(1).numInputBusChannels_(0).sampleRate_(32000);
 var recipes, render;
-var engine, tires, air, shifter, lift, compressor, valve, afterfire, contact, bell;
+var makeEngine, engine, trueno, tires, air, shifter, lift, compressor, valve, afterfire, contact, bell;
 var localServer = Platform.resourceDir +/+ "scsynth";
 
 if(File.exists(localServer)) { Score.program = localServer.quote };
 
-engine = SynthDef(\tofuEngine, { |firing=120, load=0.7, part=0, seed=23|
+makeEngine = { |stock|
+SynthDef(if(stock) { \truenoEngine } { \tofuEngine }, { |firing=120, load=0.7, part=0, seed=23|
     var turns, firingPhase, wobble, pulses, primary, intakePorts, valveTrain;
     var paired, collector, tailpipe, pressureEdges, blowdownBody, muffler, mouth, exhaust;
     var airbox, plenum, intake, cams, crankcase, coast, output;
@@ -137,9 +138,37 @@ engine = SynthDef(\tofuEngine, { |firing=120, load=0.7, part=0, seed=23|
         coast,
         intake + (cams * 0.10)
     ]);
+    if(stock) {
+        // Early big-port 4A-GEU. Each two-cylinder secondary reaches the
+        // single exhaust at a different delay. The resonator and rear box
+        // take the edge off the tail while the inlet opens under load.
+        var branchA = primary[0] + primary[2], branchB = primary[1] + primary[3];
+        var header = DelayC.ar(branchA, 0.01, 0.0015) + DelayC.ar(branchB, 0.01, 0.00196);
+        var tube = header - (LPF.ar(DelayC.ar(header, 0.01, 0.0045), 2700) * 0.53);
+        var rearBox = tube + (LPF.ar(DelayC.ar(tube, 0.02, 0.0102), 1450) * 0.43);
+        var caseTone = (Ringz.ar(pressureEdges, 468, 0.012) * (0.46 - (revs * 0.19)))
+            + (BPF.ar(rearBox, 305, 0.92) * 0.78) + (BPF.ar(rearBox, 843, 0.71) * 0.72);
+        var tail = (LPF.ar(rearBox, 950 + (1950 * load) + (940 * revs)) * 0.79)
+            + caseTone + (blowdownBody * 0.27) + (BPF.ar(tube, 1470, 0.86) * revs * 0.46);
+        // A pressure pulse returns from the common plenum separately from
+        // the high-port bark. Their mix follows the T-VIS actuator in game.
+        var runner = intakePorts - (DelayC.ar(intakePorts, 0.01, 0.0033) * 0.48);
+        var induction = (plenum * 0.56) + (BPF.ar(runner, 560, 0.79) * 1.9)
+            + (BPF.ar(runner, 1030, 0.61) * 1.2) + (BPF.ar(runner, 1960, 0.72) * 1.05)
+            + (BPF.ar(airbox, 3100, 0.94) * 0.36);
+        var mechanical = (crankcase * 0.62) + (cams * 0.28);
+        var closed = (LPF.ar(rearBox, 515) * 0.31) + (BPF.ar(runner, 515, 0.86) * 0.47)
+            + (plenum * 0.24) + mechanical + (BPF.ar(airbox, 1220, 0.72) * 0.20);
+        output = Select.ar(part, [
+            tail + (mechanical * (1.28 - (load * 0.83))) + (induction * load * revs * 0.11),
+            closed, induction + (cams * 0.08)
+        ]);
+    };
     // Leave room for the leading pressure edge. render.py matches stem RMS.
     Out.ar(0, LPF.ar(HPF.ar(output * 0.16, 26), 10800));
-});
+}) };
+engine = makeEngine.value(false);
+trueno = makeEngine.value(true);
 
 tires = SynthDef(\tofuTires, { |part=0, seed=64|
     var sand, shake, chatter, strain, grain, low, tearing, voiceA, voiceB, squeal;
@@ -303,6 +332,11 @@ recipes = [
     ["finish", 0.98, bell, [[0, [\freq, 783.99, \duration, 0.23]], [0.096, [\freq, 932.33, \duration, 0.22]], [0.20, [\freq, 1046.5, \duration, 0.23]],
         [0.32, [\freq, 1396.91, \duration, 0.52, \amp, 0.34]], [0.32, [\freq, 1046.5, \duration, 0.42, \amp, 0.16]]]]
 ];
+// Both cars use the same sampled crank speeds for phase-locked pitch ramps.
+// The Trueno renders through its own manifold, induction and silencer.
+recipes = recipes ++ recipes.select { |entry| entry[0].beginsWith("engine-") }.collect { |entry|
+    [entry[0].replace("engine-", "trueno-"), entry[1], trueno, entry[3]]
+};
 
 if("TOFU_SFX_ENGINE_ONLY".getenv == "1") {
     recipes = recipes.select { |entry|
@@ -312,6 +346,9 @@ if("TOFU_SFX_ENGINE_ONLY".getenv == "1") {
 if("TOFU_SFX_TURBO_TIRES".getenv == "1") {
     recipes = recipes.select { |entry| entry[0].beginsWith("tire-") or: {
         ["turbo-spool", "blowoff", "afterfire"].includesEqual(entry[0]) } };
+};
+if("TOFU_SFX_TRUENO".getenv == "1") {
+    recipes = recipes.select { |entry| entry[0].beginsWith("trueno-") };
 };
 if(("TOFU_SFX_ONLY".getenv ? "").size > 0) {
     recipes = recipes.select { |entry| entry[0] == "TOFU_SFX_ONLY".getenv };

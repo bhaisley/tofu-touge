@@ -346,9 +346,15 @@
 
   class DriftEffects {
     constructor(scene,car,roadHeight,roadHalf){
-      this.trails=new RubberTrails(scene,roadHeight);this.smoke=new DriftSmoke(scene);this.exhaust=new ExhaustFlames(car);
+      this.trails=new RubberTrails(scene,roadHeight);this.smoke=new DriftSmoke(scene);
+      this.exhausts=new WeakMap();this.setCar(car);
       this.clock=0;this.contactReady=false;this.roadHalf=roadHalf;
       this.tires=[0,1].map(side=>({heat:0,emission:side*.47,previous:new T.Vector3()}));
+    }
+    setCar(car){
+      this.exhaust?.clear();
+      if(!this.exhausts.has(car))this.exhausts.set(car,new ExhaustFlames(car));
+      this.exhaust=this.exhausts.get(car);
     }
     cut(){
       this.trails.cut();this.smoke.clear();this.exhaust.clear();this.contactReady=false;

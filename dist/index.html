@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#10191d">
-  <meta name="description" content="Drift the NEO86 through the cedars of Haruna Pass and along Mikuni Pass overlooking Mount Fuji. Drive each mountain in both directions.">
+  <meta name="description" content="Drift the classic Toyota AE86 Trueno or the modern NEO86 through Haruna Pass and along Mikuni Pass overlooking Mount Fuji.">
   <title>Tofu Touge — Japanese Mountain Passes</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='9' fill='%23f26743'/%3E%3Cpath d='m8 47 21-32 10 16 5-7 13 23H45L34 31l-4 6-2-4-9 14z' fill='%2310191d'/%3E%3C/svg%3E">
   <script>
@@ -60,11 +60,22 @@
       <div class="course-cell"><span class="meta">DISTANCE</span><strong id="menu-distance">—</strong></div>
       <div class="course-cell elevation-cell"><span id="elevation-label" class="meta">ELEVATION DROP</span><strong id="menu-drop">—</strong></div>
       <div class="course-cell weather-cell"><span class="meta">CONDITIONS</span><strong>Damp <em> / </em> <span id="course-light">Dawn</span></strong></div>
-      <button id="view-car" class="course-cell vehicle-cell" aria-label="View car, Toyota GR86 NEO86"><span class="meta">VIEW CAR <span aria-hidden="true">↗</span></span><strong>Toyota GR86 <small>NEO86</small></strong></button>
+      <div class="course-cell vehicle-cell">
+        <button id="view-car" aria-label="Open garage, Toyota GR86 NEO86"><span class="meta">GARAGE <span aria-hidden="true">↗</span></span><strong id="menu-car" aria-live="polite">GR86 <small>NEO86</small></strong></button>
+        <button id="next-car" aria-label="Switch to Toyota Sprinter Trueno AE86" title="Switch to Toyota Sprinter Trueno AE86">›</button>
+      </div>
     </section>
   </main>
   <section id="walkaround" aria-label="Vehicle walkaround" hidden>
-    <div class="car-caption"><h2>Toyota GR86 <small>NEO86</small></h2><p>Drag to rotate · Scroll or pinch to zoom</p></div>
+    <div class="car-caption">
+      <div class="course-picker garage-picker" role="group" aria-label="Select your car">
+        <button type="button" data-vehicle="neo86" aria-pressed="true">GR86 · NEO86</button>
+        <button type="button" data-vehicle="ae86" aria-pressed="false">AE86 · Trueno</button>
+      </div>
+      <h2 id="garage-car">Toyota GR86 <small>NEO86</small></h2>
+      <p id="garage-spec">Widebody conversion · Turbocharged · Rear-wheel drive</p>
+      <p id="garage-hint">Drag to rotate · Scroll or pinch to zoom</p>
+    </div>
     <div class="car-actions">
       <button id="orbit-left" class="top-button square" aria-label="Rotate car view left">‹</button>
       <button id="orbit-right" class="top-button square" aria-label="Rotate car view right">›</button>
@@ -105,6 +116,7 @@
   <script defer src="js/neo-body.js"></script>
   <script defer src="js/neo-fascias.js"></script>
   <script defer src="js/neo-wheels.js"></script>
+  <script defer src="js/ae86.js"></script>
   <script defer src="js/neo-occlusion.js"></script>
   <script defer src="js/grass.js"></script>
   <script defer src="js/forest.js"></script>

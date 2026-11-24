@@ -3,16 +3,27 @@
 
   // Single-track planar chassis. Distances are metres, angles are radians,
   // tire forces are newtons. Positive steering and yaw turn the car right.
-  const mass = 965;
-  const inertia = 1240;
-  const wheelbase = 2.40;
-  const frontArm = 1.12;
-  const rearArm = wheelbase - frontArm;
-  const cgHeight = 0.47;
-  const tireRadius = 0.287;
   const gravity = 9.81;
-  const ratios = [3.59, 2.02, 1.38, 1.00, 0.86];
-  const finalDrive = 4.30;
+  const cars = {
+    neo86: {
+      mass: 965, inertia: 1240, wheelbase: 2.40, frontArm: 1.12, cgHeight: .47,
+      tireRadius: .287, halfWidth: .82, halfLength: 1.98,
+      frontGrip: 1.09, rearGrip: 1.12, frontStiffness: 11.7, rearStiffness: 13.5,
+      ratios: [3.59, 2.02, 1.38, 1, .86], reverseRatio: 3.38, finalDrive: 4.30,
+      torque: engineTorque, efficiency: .89, turbo: true, idle: 1050, rollingIdle: 1020,
+      redline: 8000, limiter: 7920, shiftRpm: 7400, shiftSeconds: .18, overrun: .67,
+    },
+    ae86: {
+      // 1983 three-door GT APEX, including a 65 kg driver. The road tires are
+      // period-size 185/60R14s. Inertia, slip stiffness and losses are estimates.
+      mass: 940 + 65, inertia: 1185, wheelbase: 2.40, frontArm: 1.14, cgHeight: .50,
+      tireRadius: .282, halfWidth: .8125, halfLength: 2.1025,
+      frontGrip: .99, rearGrip: .99, frontStiffness: 10.1, rearStiffness: 11.2,
+      ratios: [3.587, 2.022, 1.384, 1, .861], reverseRatio: 3.484, finalDrive: 4.300,
+      torque: truenoTorque, efficiency: .84, turbo: false, idle: 850, rollingIdle: 850,
+      redline: 7600, limiter: 7600, shiftRpm: 7160, shiftSeconds: .25, overrun: .90,
+    },
+  };
 
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
   const lerp = (a, b, t) => a + (b - a) * t;
@@ -30,6 +41,21 @@
       17 * smooth(6300, 7400, rpm)) * (1 - 0.84 * smooth(7550, 7930, rpm));
   }
 
+  // Crankshaft estimates between Toyota's two published 4A-GEU peaks.
+  // At 6,600 rpm, 138.35 N m gives the period 130 PS gross power rating.
+  const truenoCurve = [[850, 85], [2000, 107], [3300, 123], [4300, 135],
+    [5200, 149.06], [6000, 145], [6600, 138.35], [7100, 124], [7430, 107], [7600, 0]];
+  function truenoTorque(rpm) {
+    for (let i = 1; i < truenoCurve.length; i++) {
+      const [end, torque] = truenoCurve[i];
+      if (rpm <= end) {
+        const [start, previous] = truenoCurve[i - 1];
+        return lerp(previous, torque, clamp((rpm - start) / (end - start), 0, 1));
+      }
+    }
+    return 0;
+  }
+
   function tireForce(angle, corneringStiffness, peakForce, longitudinalForce, falloff) {
     const fraction = clamp(longitudinalForce / peakForce, -1, 1);
     const lateralBudget = peakForce * Math.sqrt(1 - fraction * fraction);
@@ -44,11 +70,23 @@
   }
 
   class Drive {
-    constructor(course) {
+    constructor(course, vehicleId = 'neo86') {
       this.course = course;
       this.placementId = 0;
+      this.setVehicle(vehicleId);
+    }
+
+    setVehicle(id) {
+      const vehicleId = id === 'ae86' ? 'ae86' : 'neo86';
+      if (this.vehicleId === vehicleId) return;
+      this.vehicleId = vehicleId;
+      this.tune = cars[vehicleId];
       this.reset();
     }
+
+    get rollingRadius() { return this.tune.tireRadius; }
+    get idleRpm() { return this.tune.idle; }
+    get redline() { return this.tune.redline; }
 
     reset() {
       this.time = 0;
@@ -106,7 +144,7 @@
       this.brake = 0;
       this.handbrake = false;
       this.rearLock = 0;
-      this.rpm = 1050;
+      this.rpm = this.idleRpm;
       this.gear = 1;
       this.shiftTime = 0;
       this.reverseHold = 0;
@@ -145,20 +183,21 @@
       if (this.gear < 0 && this.throttle > 0.06 && u > -0.4) this.gear = 1;
 
       if (this.gear > 0 && this.shiftTime === 0) {
+        const {tireRadius, ratios, finalDrive, shiftRpm} = this.tune;
         const wheelRpm = Math.abs(u) * (60 / (2 * Math.PI * tireRadius));
         const coupled = wheelRpm * ratios[this.gear - 1] * finalDrive;
-        const upAt = 6500 + this.throttle * 900;
+        const upAt = shiftRpm - 900 + this.throttle * 900;
         // A sliding rear tire can flare the motor without triggering an
         // unwanted upshift halfway through a hairpin.
         if (coupled > upAt && this.gear < ratios.length) {
           this.gear++;
         } else if (this.gear > 1 && coupled < 2450 + this.throttle * 900 &&
-                   wheelRpm * ratios[this.gear - 2] * finalDrive < 7050) {
+                   wheelRpm * ratios[this.gear - 2] * finalDrive < shiftRpm - 350) {
           this.gear--;
         } else {
           return;
         }
-        this.shiftTime = 0.18;
+        this.shiftTime = this.tune.shiftSeconds;
         this.events.push({ type: 'shift' });
       }
     }
@@ -242,6 +281,9 @@
 
     simulateChassis(dt) {
       const p = this.contact;
+      const tune = this.tune;
+      const {mass, inertia, wheelbase, frontArm, cgHeight, tireRadius} = tune;
+      const rearArm = wheelbase - frontArm;
       const h = this.heading;
       const speed = Math.abs(this.speed);
       const delta = wrap(this.travel - h);
@@ -267,11 +309,11 @@
       const rearEdge = smooth(this.course.half - 0.35, this.course.half + 0.9,
         Math.abs(p.offset - rearArm * cross));
       const frontLoad = clamp(rearArm / wheelbase - this.longitudinalG * cgHeight / wheelbase, 0.33, 0.72);
-      const frontCapacity = mass * gravity * frontLoad * (1.09 - 0.33 * frontEdge);
-      const rearCapacity = mass * gravity * (1 - frontLoad) * (1.12 - 0.35 * rearEdge);
+      const frontCapacity = mass * gravity * frontLoad * (tune.frontGrip - 0.33 * frontEdge);
+      const rearCapacity = mass * gravity * (1 - frontLoad) * (tune.rearGrip - 0.35 * rearEdge);
 
       const reverse = this.gear < 0;
-      const ratio = (reverse ? 3.38 : ratios[this.gear - 1]) * finalDrive;
+      const ratio = (reverse ? tune.reverseRatio : tune.ratios[this.gear - 1]) * tune.finalDrive;
       const pedal = reverse ? this.brake : this.throttle;
       const footbrake = reverse ? this.throttle : this.brake;
       const load = pedal * (this.shiftTime > 0 ? 0.20 : 1);
@@ -279,10 +321,10 @@
 
       // The wastegate limits gauge pressure to .35 bar. Charge heating and
       // pumping losses leave an 18% peak torque increase at the wheels.
-      let motive = this.engineLoad * engineTorque(this.rpm) * (1 + .18 * this.boost) * ratio * .89 / tireRadius;
+      let motive = this.engineLoad * tune.torque(this.rpm) * (1 + .18 * this.boost) * ratio * tune.efficiency / tireRadius;
       if (reverse) motive = -Math.min(motive, mass * 3.2) * (1 - smooth(5.1, 6.6, -u));
       if (!reverse && speed > 4) {
-        const overrun = (1 - this.throttle) * (0.19 + this.rpm / 7100 * 0.67);
+        const overrun = (1 - this.throttle) * (0.19 + this.rpm / 7100 * tune.overrun);
         motive -= mass * overrun * (1 - this.loose * 0.4);
       }
       // Disengage the clutch while the hydraulic handbrake locks the rear.
@@ -295,9 +337,9 @@
         (brakeDemand * 0.35 + rearCapacity * 1.12 * this.rearLock);
       const rearFx = clamp(rearDemand, -rearCapacity * 0.97, rearCapacity * 0.97);
 
-      const frontFy = tireForce(this.frontSlipAngle, 11.7, frontCapacity, frontFx, 0.055);
+      const frontFy = tireForce(this.frontSlipAngle, tune.frontStiffness, frontCapacity, frontFx, 0.055);
       const rearGrip = (1 - this.loose * (0.19 + 0.20 * this.engineLoad)) * (1 - 0.60 * this.rearLock);
-      const rearFy = tireForce(this.rearSlipAngle, 13.5, rearCapacity, rearFx, 0.105) * rearGrip;
+      const rearFy = tireForce(this.rearSlipAngle, tune.rearStiffness, rearCapacity, rearFx, 0.105) * rearGrip;
       const frontBodyY = frontFx * wheelSin + frontFy * wheelCos;
       let ax = (frontFx * wheelCos - frontFy * wheelSin + rearFx) / mass;
       let ay = (frontBodyY + rearFy) / mass;
@@ -378,9 +420,9 @@
       this.wheelAngle += frontForward * dt / tireRadius;
       this.rearWheelAngle += u * rollingRear * dt / tireRadius;
       const wheelRpm = Math.abs(u / tireRadius) * 60 / (2 * Math.PI);
-      let rpmTarget = Math.max(1020 + pedal * 1580, wheelRpm * ratio * (1 + this.wheelspin * 0.32));
-      rpmTarget = lerp(rpmTarget, 1110 + pedal * 5350, 0.6 * this.rearLock);
-      this.rpm = follow(this.rpm, clamp(rpmTarget, 970, 7920), 12, dt);
+      let rpmTarget = Math.max(tune.rollingIdle + pedal * 1580, wheelRpm * ratio * (1 + this.wheelspin * 0.32));
+      rpmTarget = lerp(rpmTarget, tune.rollingIdle + 90 + pedal * 5350, 0.6 * this.rearLock);
+      this.rpm = follow(this.rpm, clamp(rpmTarget, tune.rollingIdle - 50, tune.limiter), 12, dt);
 
       const moving = smooth(2.8, 8, speed);
       const tail = smooth(0.068, 0.59, Math.abs(this.angle));
@@ -403,7 +445,8 @@
       const relative = wrap(this.heading - p.heading);
       const sin = Math.sin(relative);
       const cos = Math.cos(relative);
-      const reach = 0.82 * Math.abs(cos) + 1.98 * Math.abs(sin);
+      const {mass, inertia, halfWidth, halfLength} = this.tune;
+      const reach = halfWidth * Math.abs(cos) + halfLength * Math.abs(sin);
       const limit = this.course.half + 1.54 - reach;
       const depth = Math.abs(p.offset) - limit;
       if (depth > 0) {
@@ -418,8 +461,8 @@
         // A glancing impact applies an impulse at the contacting corner.
         // Near parallel both tires share the wall, shortening the lever arm.
         const normalForward = sin * side, normalRight = cos * side;
-        const lever = 1.98 * clamp(normalForward * 5.5, -1, 1) * normalRight -
-          0.82 * Math.sign(normalRight) * normalForward;
+        const lever = halfLength * clamp(normalForward * 5.5, -1, 1) * normalRight -
+          halfWidth * Math.sign(normalRight) * normalForward;
         const closing = normalSpeed + this.yaw * lever;
         if (closing > 0.02) {
           const impulse = closing * (closing > 2.6 ? 1.13 : 1.01) / (1 + mass * lever * lever / inertia);
@@ -496,7 +539,7 @@
       const u = this.speed * Math.cos(this.angle);
       const previousGear = this.gear;
       this.updateTransmission(dt, u);
-      this.updateTurbo(dt, previousGear > 0 && this.gear > previousGear);
+      if (this.tune.turbo) this.updateTurbo(dt, previousGear > 0 && this.gear > previousGear);
       this.updateSlide(dt, steer, Math.abs(this.speed));
       this.simulateChassis(dt);
       this.resolveRoad();
@@ -504,6 +547,6 @@
     }
   }
 
-  Drive.rollingRadius = tireRadius;
+  Drive.rollingRadius = cars.neo86.tireRadius;
   window.TougeDrive = Drive;
 })();

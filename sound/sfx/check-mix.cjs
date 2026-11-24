@@ -194,5 +194,29 @@ for(const cue of ['blowoff','afterfire']){
   audio.buffers.set(cue,cue);audio.event(cue,.75);audio.event(cue,.66);
 }
 assert.deepEqual(starts,['blowoff','blowoff','afterfire','afterfire'],'the mixer must honor each physics event in a catch-up frame');
+// Restoring a parked turbo car and then choosing the original must clear the
+// plenum, pending lift and RPM. The stock car can shift and engine brake on
+// the same inputs without ever sending a turbo or flame event.
+car.setVehicle('ae86');
+assert.equal(car.rpm,car.idleRpm);
+assert.equal(car.rollingRadius,.282);
+assert(Math.abs(car.tune.torque(5200)-149.06)<.1);
+assert(Math.abs(car.tune.torque(6600)*6600*Math.PI/30/735.49875-130)<.1);
+const stockPull=runFor(car,10,1),stockLift=runFor(car,1.5,0);
+assert(stockPull.filter(e=>e.type==='shift').length>=2 && car.kmh>85);
+assert.equal(car.boost,0);assert.equal(car.turboSpeed,0);
+assert(!stockPull.concat(stockLift).some(e=>e.type==='blowoff' || e.type==='afterfire'));
+const stockAudio=new TougeAudio();stockAudio.setVehicle('ae86');stockAudio.active=true;
+stockAudio.event('blowoff');stockAudio.event('afterfire');
+stockAudio.update({...base,boost:1});assert.equal(stockAudio.telemetry.boost,0);assert.equal(stockAudio.pendingCue.size,0);
+for(const stem of ['idle','low','drive','high','coast','intake']){
+  const name=stockAudio.engineAsset('engine-'+stem);
+  assert.equal(name,'trueno-'+stem);
+  const pcm=pcmSamples(name);
+  assert(pcmRms(name)>.19 && pcmRms(name)<.23);
+  assert(Math.abs(pcm[0]-pcm[pcm.length-1])<.08, name+' must loop without a click');
+}
+car.setVehicle('neo86');assert.equal(car.rpm,1050);
+assert(runFor(car,8,1).some(e=>e.type==='blowoff'));
 console.log('Tire squeal per-channel RMS targets: turn-in ' + onset.toFixed(1) +
-  ' dBFS, held slide ' + sustained.toFixed(1) + ' dBFS. Engine, turbo transients, tire modes and faders passed.');
+  ' dBFS, held slide ' + sustained.toFixed(1) + ' dBFS. Both engine banks, turbo isolation, tire modes and faders passed.');

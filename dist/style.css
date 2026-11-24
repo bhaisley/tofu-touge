@@ -96,15 +96,21 @@ h1{font:italic 900 clamp(6.35rem,min(11.5vw,17.7vh),12.8rem)/.77 Race,Impact,san
 .course-cell em{color:#879193;font-size:.8em;margin:0 1px;font-style:normal}
 .course-cell small,.unit{font:700 .68em Cond,sans-serif;color:#cbd0ca;letter-spacing:.04em}
 .vehicle-cell small{font:600 .67rem var(--mono);color:#f4b18e;border:1px solid #c584626e;margin-left:4px;padding:2px 5px;vertical-align:middle}
-.vehicle-cell{border-block:0;border-right:0;background:transparent;text-align:left;align-items:flex-start;pointer-events:auto}
+.vehicle-cell{flex-direction:row;align-items:center;justify-content:space-between;gap:3px;pointer-events:auto}
+#view-car,#next-car{border:0;background:transparent;color:inherit}
+#view-car{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;padding:0}
+#next-car{flex:0 0 32px;height:36px;font:600 1.7rem/1 Cond,Arial,sans-serif;color:var(--orange);border:1px solid var(--line)}
+#next-car:hover{color:#ffd1b9;background:#ffffff16}
 .vehicle-cell .meta span{color:var(--orange);font-size:1.03em}
-.vehicle-cell:hover strong{color:#ffd1b9}
+#view-car:hover strong{color:#ffd1b9}
 body[data-state="viewcar"] #viewport,#viewport.chase-orbit{cursor:grab}
 body[data-state="viewcar"] #viewport:active,#viewport.chase-orbit.orbiting{cursor:grabbing}
 #walkaround{position:fixed;inset:auto 0 0;display:flex;align-items:end;justify-content:space-between;gap:12px;padding:64px var(--edge) max(24px,env(safe-area-inset-bottom));pointer-events:none;background:linear-gradient(transparent,#0b1218b8)}
 .car-caption h2{margin:0;font:700 clamp(1.7rem,3.5vw,3rem)/1 Cond,Arial,sans-serif}
+.garage-picker{pointer-events:auto;margin-bottom:10px}
 .car-caption small{font:600 .4em var(--mono);color:#f4b18e;vertical-align:middle}
 .car-caption p{margin:7px 0 0;color:#dedfd8;font-size:.82rem}
+.car-caption #garage-spec{color:#ffcfad;font-family:var(--mono);font-size:.72rem}
 .car-actions{display:flex;align-items:center;gap:7px;pointer-events:auto}
 .car-actions .square{font:700 1.7rem/1 Cond,sans-serif}
 .car-actions .secondary{min-height:39px;padding:0 16px}
@@ -222,7 +228,9 @@ noscript{position:fixed;inset:50% 10% auto;background:#121b20;padding:20px;z-ind
   :root{--touch-key:clamp(60px,9.2vw,84px);--touch-gap:clamp(7px,1.2vw,13px);--pedal-height:clamp(78px,18dvh,98px)}
   .course-picker button{min-height:44px;padding-inline:13px}
   .menu-buttons .primary,.menu-buttons .secondary,.dialog-buttons button,.car-actions .secondary{min-height:48px}
-  .vehicle-cell{min-height:44px;justify-content:center}
+  #view-car,#next-car{min-height:44px}
+  #view-car{justify-content:center}
+  #next-car{flex-basis:44px}
   .topbar{left:max(var(--edge),env(safe-area-inset-left));right:max(var(--edge),env(safe-area-inset-right))}
   .top-button,.top-button.square,.dialog-close,.car-actions .square{min-width:44px;min-height:44px}
   .controls-tabs button,.toggle-setting,.radio-setting,.pause-links button,#radio-power{min-height:44px}

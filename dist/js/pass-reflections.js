@@ -68,7 +68,7 @@
     return count<index.length*.85?new T.BufferAttribute(result.slice(0,count),1):null;
   }
 
-  function* installSteps(car,course) {
+  function* installSteps(car,course,atlas={}) {
     const meshes=[],indices=new Map();
     car.traverse(mesh=>{
       if(!mesh.isMesh)return;
@@ -93,7 +93,7 @@
       mesh.onBeforeShadow=()=>geometry.setIndex(reduced);
       mesh.onAfterRender=mesh.onAfterShadow=()=>{if(geometry.index!==original)geometry.setIndex(original);};
     }
-    return installLighting(car,course);
+    return installLighting(car,course,atlas);
   }
   function install(car,course) {
     const build=installSteps(car,course);
@@ -105,26 +105,25 @@
 
   // Local probes contain the actual ridge, branches, rail and verge at each station.
   // Capture is done when authoring the pass. Driving only interpolates two neighbours.
-  function installLighting(car, course) {
+  function installLighting(car, course, atlas) {
     const grid = layout(course.length);
-    let bounce=null,night=false;
+    let night=false;
+    if(!atlas.texture){
+      const file=course.mapId==='fuji'?'fuji-reflections.webp':'haruna-reflections.webp';
+      atlas.texture=new T.TextureLoader().load(window.TougeArtURLs?.[file]||'assets/art/'+file,map=>{
+        atlas.bounce=diffuseProbes(map.image,grid);
+      });
+      // Every car on the same pass uses the same north-up probe captures.
+      atlas.texture.flipY=false;atlas.texture.colorSpace=T.NoColorSpace;
+      atlas.texture.generateMipmaps=false;atlas.texture.minFilter=T.LinearFilter;
+    }
     const uniforms = {
-      passRadiance: {value: null}, passLoaded: {value: 0}, passBlend: {value: 0},passNightMask:{value:0},
+      passRadiance: {value: atlas.texture}, passLoaded: {value: 0}, passBlend: {value: 0},passNightMask:{value:0},
       passCenters: {value: [new T.Vector3(), new T.Vector3()]},
       passTiles: {value: [new T.Vector2(), new T.Vector2()]},
       passDiffuseLight:{value:Array.from({length:6},()=>new T.Vector3())},
       parkedProbe:{value:0},parkedCenter:{value:new T.Vector3()}
     };
-    const loader = new T.TextureLoader();
-    const file=course.mapId==='fuji'?'fuji-reflections.webp':'haruna-reflections.webp';
-    loader.load(window.TougeArtURLs?.[file]||'assets/art/'+file, map => {
-      // The baker writes north-up octahedra in top-down atlas order.
-      map.flipY = false; map.colorSpace = T.NoColorSpace;
-      map.generateMipmaps = false; map.minFilter = T.LinearFilter;
-      bounce=diffuseProbes(map.image,grid);
-      uniforms.passRadiance.value = map; uniforms.passLoaded.value = night?0:1;
-      uniforms.passNightMask.value=night?1:0;
-    });
     const fragment = `
       uniform sampler2D passRadiance;
       uniform float passLoaded, passBlend, parkedProbe, passNightMask;
@@ -242,6 +241,9 @@
       for(const material of materials){material.envMap=texture;material.needsUpdate=true;}
     }
     function update(station) {
+      const bounce=atlas.bounce;
+      uniforms.passLoaded.value=bounce && !night?1:0;
+      uniforms.passNightMask.value=bounce && night?1:0;
       const f = T.MathUtils.clamp(station / grid.spacing, 0, grid.count - 1);
       const first = Math.min(grid.count - 2, Math.floor(f));
       uniforms.passBlend.value = T.MathUtils.smoothstep(f - first, 0, 1);
@@ -263,8 +265,6 @@
     }
     function setNight(value){
       night=value;
-      uniforms.passLoaded.value=bounce && !night?1:0;
-      uniforms.passNightMask.value=bounce && night?1:0;
       setParked(null);
     }
     return {setParked,setNight,update};

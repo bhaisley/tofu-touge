@@ -43,6 +43,12 @@
       objective:'Climb from Hirano before sunrise.',destination:'Take the delivery up Mikuni Pass.'}
   };
   const settings=read(settingsKey),roads=new Map();
+  const vehicles={
+    neo86:{name:'Toyota GR86',trim:'NEO86',short:'GR86',spec:'Widebody conversion · Turbocharged · Rear-wheel drive'},
+    ae86:{name:'Toyota Sprinter Trueno',trim:'AE86',short:'Trueno',spec:'1983 GT-APEX · 1.6 L twin-cam · 5-speed'}
+  };
+  const linkedCar=new URLSearchParams(location.search).get('car');
+  let vehicleId=[linkedCar,settings.car].find(id=>Object.prototype.hasOwnProperty.call(vehicles,id))||'neo86';
   let stageId=document.documentElement.dataset.cover;
   const stageFor=(map,climb)=>(map==='fuji'?'fuji-':'')+(climb?'uphill':'downhill');
   function roadFor(id){
@@ -52,8 +58,10 @@
     return id===stageFor(map,true)?road.reversed():road;
   }
   let course=roadFor(stageId);
-  const drive=new TougeDrive(course), renderPose=new TougeRenderPose(drive);
-  const recordsKey=()=>stages[stageId].record;
+  const drive=new TougeDrive(course);
+  drive.setVehicle(vehicleId);audio.setVehicle(vehicleId);
+  const renderPose=new TougeRenderPose(drive);
+  const recordsKey=()=>stages[stageId].record+(vehicleId==='neo86'?'':'-'+vehicleId);
   let records=read(recordsKey());
   let sound=settings.sound!==false,music=settings.music!==false;
   const savedVolume=value=>Number.isFinite(value)?clamp(value,0,1):1;
@@ -71,6 +79,28 @@
   const fmt=n=>Math.round(n).toLocaleString('en-US');
   const mapButtons=document.querySelectorAll('.pass-picker button');
   const stageButtons=document.querySelectorAll('.direction-picker button');
+  const vehicleButtons=document.querySelectorAll('.garage-picker button');
+  const otherCar=()=>vehicleId==='neo86'?'ae86':'neo86';
+  function showVehicle(){
+    const car=vehicles[vehicleId],other=vehicles[otherCar()];
+    document.body.dataset.car=vehicleId;
+    for(const button of vehicleButtons)button.setAttribute('aria-pressed',String(button.dataset.vehicle===vehicleId));
+    byId('garage-car').innerHTML=car.name+' <small>'+car.trim+'</small>';
+    setText('garage-spec',car.spec);
+    byId('menu-car').innerHTML=car.short+' <small>'+car.trim+'</small>';
+    byId('view-car').setAttribute('aria-label','Open garage, '+car.name+' '+car.trim);
+    const next=byId('next-car');next.title='Switch to '+other.name+' '+other.trim;next.setAttribute('aria-label',next.title);
+    byId('boost').hidden=vehicleId==='ae86';
+  }
+  function selectVehicle(id){
+    if((state!=='menu'&&state!=='viewcar') || dialog || id===vehicleId)return;
+    clearEntry();vehicleId=id;drive.setVehicle(id);audio.setVehicle(id);renderPose.capture(drive);
+    records=read(recordsKey());settings.car=id;write(settingsKey,settings);
+    showVehicle();showRecord();
+    if(state==='viewcar'){
+      parkCar();walkaround.pending=2;enterPass(true);
+    }else schedulePass();
+  }
   let hudMapBounds=null;
   const startLabel=()=>course.direction<0?'Start ascent':'Start descent';
   function showCourse(){
@@ -106,6 +136,8 @@
   }
   for(const button of mapButtons)button.addEventListener('click',()=>selectStage(stageFor(button.dataset.map,course.direction<0)));
   for(const button of stageButtons)button.addEventListener('click',()=>selectStage(button.dataset.stage));
+  for(const button of vehicleButtons)button.addEventListener('click',()=>selectVehicle(button.dataset.vehicle));
+  byId('next-car').addEventListener('click',()=>selectVehicle(otherCar()));
   function showRecord(){const el=byId('menu-record');el.hidden=!Number.isFinite(records.time);if(!el.hidden)el.textContent='PERSONAL BEST  '+timeStr(records.time);}
   function paintMap(canvas,local=false) {
     const bounds=(local && hudMapBounds)||canvas.getBoundingClientRect();
@@ -143,13 +175,13 @@
     c.save();c.translate(baseX,baseY);c.rotate(drive.heading-p.heading);c.fillStyle='#ff6943';c.strokeStyle='#162128';c.lineWidth=2;
     c.beginPath();c.moveTo(0,-6);c.lineTo(4.6,4);c.lineTo(0,2.5);c.lineTo(-4.6,4);c.closePath();c.stroke();c.fill();c.restore();
   }
-  showCourse();
+  showCourse();showVehicle();
   const tacho=byId('tach'),ticks=Array.from({length:26},(_,i)=>{const el=document.createElement('i');if(i>20)el.className='hot';tacho.append(el);return el;});
   function stateTo(next){
     state=next;document.body.dataset.state=next;byId('hud').hidden=next==='menu'||next==='viewcar';
     viewport.classList.toggle('chase-orbit',canOrbit());
     byId('walkaround').hidden=next!=='viewcar';
-    const labels={menu:'MAIN MENU',viewcar:'WALKAROUND',racing:course.direction<0?'UPHILL RUN':'DOWNHILL RUN',countdown:'START GRID',paused:'PAUSED',result:'RUN RESULT'};
+    const labels={menu:'MAIN MENU',viewcar:'GARAGE',racing:course.direction<0?'UPHILL RUN':'DOWNHILL RUN',countdown:'START GRID',paused:'PAUSED',result:'RUN RESULT'};
     setText('screen-label',labels[next]);
     refreshSound();
   }
@@ -234,7 +266,8 @@
     const start=byId('start-btn'),car=byId('view-car');
     start.disabled=loading?.inspect===false;car.disabled=loading?.inspect===true;
     start.children[1].textContent=start.disabled?'Loading pass':startLabel();
-    car.firstElementChild.firstChild.nodeValue=car.disabled?'LOADING CAR ':'VIEW CAR ';
+    car.firstElementChild.firstChild.nodeValue=car.disabled?'LOADING ':'GARAGE ';
+    setText('garage-hint',loading?.inspect?'Preparing '+vehicles[vehicleId].trim+'…':'Drag to rotate · Scroll or pinch to zoom');
     start.setAttribute('aria-busy',String(start.disabled));car.setAttribute('aria-busy',String(car.disabled));
   }
   function artworkReady(manager){
@@ -246,6 +279,15 @@
       };
     });
     return artReady;
+  }
+  async function withVehicleArt(build){
+    const manager=THREE.DefaultLoadingManager,ticket='tofu-world-build';
+    // A staged build can queue more images after an earlier batch finishes.
+    manager.itemStart(ticket);
+    const images=artworkReady(manager);
+    let built;
+    try{built=await build();}finally{manager.itemEnd(ticket);}
+    await images;return built;
   }
   function checkJob(job){
     if(job!==preparation)throw new DOMException('Graphics preparation superseded','AbortError');
@@ -291,40 +333,42 @@
     await scriptsReady;
     await pause();
     if(!world){
-      const manager=THREE.DefaultLoadingManager;
-      // Between batches, all outstanding image requests can momentarily finish.
-      // Keep this load open until the last geometry batch has queued its maps.
-      const ticket='tofu-world-build';manager.itemStart(ticket);
-      const images=artworkReady(manager);
-      let pass;
-      try{pass=await TougeWorld.create(byId('world'),course,pause);job.built=pass;}
-      finally{manager.itemEnd(ticket);}
-      await images;
+      const pass=await withVehicleArt(async()=>{
+        const built=await TougeWorld.create(byId('world'),course,pause,()=>vehicleId);
+        job.built=built;return built;
+      });
       if(preparation!==job){pass.dispose();checkJob(job);}
       world=pass;job.built=null;
     }
     const pass=world;
     for(;;){
       await pause();
-      const stage=course;
+      const stage=course,id=vehicleId;
+      if(pass.vehicleId!==id){
+        await withVehicleArt(()=>pass.setVehicle(id,pause));
+        checkJob(job);
+        if(id!==vehicleId || stage!==course)continue;
+      }
       pass.setCourse(stage);
       if(!pass.preparedCourses.has(stage)){
         await pass.warmGraphics(pause);
         await pause();
-        if(stage!==course)continue;
-        // Upload the grid's geometry and render targets behind the cover. Its
-        // first visible frame and the three-second countdown start together.
-        pass.render(0,drive,false);
-        pass.reset();pass.preparedCourses.add(stage);
+        if(stage!==course || id!==vehicleId)continue;
+        // A garage swap keeps the parked camera. Warm the driving grid once
+        // the cover is back, before the next visible countdown.
+        if(state!=='viewcar'){
+          pass.render(0,drive,false);
+          pass.reset();pass.preparedCourses.add(stage);
+        }
       }
       if(loading?.inspect && !stage.night && !pass.inspectionReady)await pass.warmInspection(pause);
-      if(stage===course)return pass;
+      if(stage===course && id===vehicleId)return pass;
     }
   }
   function loadPass(){
     if(contextLost)return Promise.reject(new Error('WebGL context lost'));
     if(preparation)return preparation.ready;
-    if(world?.course===course && world.preparedCourses.has(course) &&
+    if(world?.course===course && world.vehicleId===vehicleId && world.preparedCourses.has(course) &&
       (!loading?.inspect || course.night || world.inspectionReady))return Promise.resolve(world);
     const job={};preparation=job;
     job.ready=preparePass(job).finally(()=>{if(preparation===job)preparation=null;});
@@ -332,7 +376,7 @@
   }
   function schedulePass(){
     if(warmScheduled || preparation || contextLost || state!=='menu' || dialog || document.hidden ||
-      (world?.course===course && world.preparedCourses.has(course)))return;
+      (world?.course===course && world.vehicleId===vehicleId && world.preparedCourses.has(course)))return;
     warmScheduled=true;
     const warm=()=>{
       warmScheduled=false;
@@ -344,6 +388,14 @@
   bind('view-car',()=>enterPass(true));bind('car-back',leaveCar);
   bind('orbit-left',()=>walkaround.move(-Math.PI/6,0));bind('orbit-right',()=>walkaround.move(Math.PI/6,0));
   function begin(){return enterPass(false);}
+  function parkCar(){
+    const physical=course.physicalCourse;
+    const station=course.mapId==='fuji'?course.physicalStation(physical.splits[0]-22):
+      course.night?course.start:course.splits[0]-19;
+    drive.place(station);
+    const p=drive.contact;p.offset=.55;drive.x=p.x+p.rx*p.offset;drive.z=p.z+p.rz*p.offset;
+    drive.steerAngle=.048;
+  }
   async function enterPass(inspect){
     if(loading?.inspect===inspect)return;
     closeDialog(false);
@@ -353,16 +405,13 @@
     try{
       await loadPass();
       if(loading!==request)return;
-      world.reset();drive.reset();accumulator=0;prevTime=0;
+      const alreadyParked=inspect && state==='viewcar';
+      world.reset();if(!alreadyParked)drive.reset();accumulator=0;prevTime=0;
       if(inspect){
-        const physical=course.physicalCourse;
-        const station=course.mapId==='fuji'
-          ?course.physicalStation(physical.splits[0]-22)
-          :course.night?course.start:course.splits[0]-19;
-        drive.place(station);
-        const p=drive.contact;p.offset=.55;drive.x=p.x+p.rx*p.offset;drive.z=p.z+p.rz*p.offset;
-        drive.steerAngle=.048;walkaround.reset();walkaround.render(world,drive,1/60);
-        stateTo('viewcar');byId('car-back').focus({preventScroll:true});return;
+        if(!alreadyParked)parkCar();
+        if(alreadyParked)walkaround.pending=2;else walkaround.reset();
+        walkaround.render(world,drive,1/60);stateTo('viewcar');
+        if(!alreadyParked)byId('car-back').focus({preventScroll:true});return;
       }
       renderPose.capture(drive);count=3.1;lastHud=0;toastTime=0;
       byId('toast').hidden=true;byId('chain').hidden=true;byId('countdown').hidden=false;setText('count-number','3');setText('count-label','START GRID');
@@ -551,15 +600,21 @@
   function gamepad(){
     let pad;try{pad=Array.from(navigator.getGamepads?.()||[]).find(p=>p?.connected&&p.mapping==='standard');}catch{return;}
     if(!pad){previousButtons.clear();return;}
-    for(const i of [0,1,3,9,12,13,14,15]){
+    for(const i of [0,1,3,4,5,9,12,13,14,15]){
       const held=!!pad.buttons[i]?.pressed,edge=held&&!previousButtons.get(i);previousButtons.set(i,held);
       if(!edge)continue;
       if(dialog==='radio'){if(i===1||i===9)dismiss();else if(i===15)radio.select(radio.nextIndex);continue;}
+      if(!dialog && (state==='menu'||state==='viewcar') && (i===4||i===5)){selectVehicle(otherCar());continue;}
+      if(state==='menu' && !dialog && i===3){enterPass(true);continue;}
       if(state==='menu'&&!dialog&&i>=12){
         const map=i<14?(i===12?'haruna':'fuji'):stages[stageId].map;
         selectStage(stageFor(map,i<14?course.direction<0:i===15));continue;
       }
-      if(state==='viewcar'){if(i===1 || i===9)leaveCar();continue;}
+      if(state==='viewcar'){
+        if(i===1||i===9)leaveCar();
+        else if(i===14||i===15)selectVehicle(vehicleButtons[i-14].dataset.vehicle);
+        continue;
+      }
       if(i===0 && state==='racing' && !dialog) handbrakeTap=true;
       if(dialog==='result'&&i===0){begin();continue;}
       if((i===9 || (i===0&&state==='menu')) && !loading){
@@ -585,6 +640,9 @@
     if(code==='KeyM' && !event.repeat){toggleSound();return;}
     if(state==='viewcar'){
       if(code==='Escape'){event.preventDefault();leaveCar();}
+      else if(event.target.closest?.('.garage-picker') && (code==='ArrowLeft'||code==='ArrowRight')){
+        event.preventDefault();const btn=vehicleButtons[code==='ArrowLeft'?0:1];btn.click();btn.focus();
+      }
       else if(walkaround.key(code))event.preventDefault();
       return;
     }
@@ -671,11 +729,12 @@
   function hud(){
     setText('clock',timeStr(drive.time));setText('speed',String(Math.round(drive.kmh)));setText('gear',drive.gear<0?'R':String(drive.gear));
     setText('rpm',fmt(Math.round(drive.rpm/50)*50)+' RPM');setText('total-score',fmt(drive.score)+' DRIFT PTS');
-    setText('boost',(drive.boost*.35).toFixed(2)+' BAR');
+    if(vehicleId!=='ae86')setText('boost',(drive.boost*.35).toFixed(2)+' BAR');
     const sector=Math.min(2,drive.sector);setText('sector','S'+(sector+1)+' / '+course.sectors[sector].toUpperCase());
     byId('condition').firstChild.nodeValue=String(drive.integrity);byId('cargo-meter').firstElementChild.style.width=drive.integrity+'%';
     byId('progress-fill').style.width=drive.progress*100+'%';setText('remaining',((1-drive.progress)*course.distance/1000).toFixed(2)+(course.direction<0?' KM TO SUMMIT':' KM TO DELIVERY'));
-    const threshold=Math.round(drive.rpm/8000*ticks.length);for(let i=0;i<ticks.length;i++)ticks[i].classList.toggle('lit',i<threshold);
+    const maxTach=vehicleId==='ae86'?drive.redline:8000;
+    const threshold=Math.round(drive.rpm/maxTach*ticks.length);for(let i=0;i<ticks.length;i++)ticks[i].classList.toggle('lit',i<threshold);
     byId('chain').hidden=drive.chain<3||state==='result';
     if(!byId('chain').hidden){
       setText('chain-points','+'+fmt(drive.chain));
@@ -694,7 +753,10 @@
       setText('radio-time',voice?songTime(elapsed)+' / '+songTime(voice.source.buffer.duration):'');
       return;
     }
-    if(state==='viewcar' && world){walkaround.render(world,drive,Math.min(dt,.06),pad);return;}
+    if(state==='viewcar' && world){
+      if(!dialog && !loading && world.vehicleId===vehicleId)walkaround.render(world,drive,Math.min(dt,.06),pad);
+      return;
+    }
     if(!world||(state!=='racing'&&state!=='countdown'))return;
     const input=drivingInput(pad);
     if(state==='countdown'){
@@ -703,7 +765,7 @@
       drive.handbrake=input.handbrake;
       // With the clutch disengaged on the grid, a short blip spins up
       // quickly, then returns to idle on flywheel inertia.
-      const freeRpm=1020+input.throttle*5520;
+      const freeRpm=vehicleId==='ae86'?drive.idleRpm+input.throttle*(drive.redline-drive.idleRpm):1020+input.throttle*5520;
       drive.rpm+=(freeRpm-drive.rpm)*(1-Math.exp(-dt*(freeRpm>drive.rpm?3.9:2.8)));
       drive.engineLoad+=(input.throttle*.49-drive.engineLoad)*(1-Math.exp(-dt*9));
       count-=dt;

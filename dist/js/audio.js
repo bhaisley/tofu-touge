@@ -12,6 +12,7 @@
     "engine-intake": 5400,
   };
   const engineNames = Object.keys(engineRpm);
+  const truenoSounds = Object.fromEntries(engineNames.map(name => [name, name.replace("engine-", "trueno-")]));
   const continuousSounds = ["tire-scrub", "tire-squeal", "tire-front", "tire-lock", "turbo-spool", "road-air"];
   const cues = {
     shift: { volume: 0.32, interval: 0.15, varies: true },
@@ -45,6 +46,7 @@
     constructor({ radio = null, musicUrl = "" } = {}) {
       this.radio = radio || (musicUrl ? new TougeRadio([{id:"night-delivery", title:"Night Delivery", url:musicUrl}]) : null);
       this.musicPreview = false;
+      this.vehicleId = "neo86";
       this.context = null;
       this.preloadedCue = null;
       this.active = false;
@@ -65,6 +67,7 @@
       this.filteredLoad = 0;
       this.tireStrain = 0;
       this.compressorSpeed = 0;
+      this.intakeOpening = 0;
       this.telemetry = {
         rpm: 1050, speed: 0, slip: 0, throttle: 0, brake: 0, gear: 0,
         engineLoad: 0, boost: 0, tireScrub: 0, frontSlipAngle: 0, rearSlipAngle: 0,
@@ -174,13 +177,50 @@
         ? Promise.resolve(true)
         : ctx.resume().then(() => true, () => false);
 
-      // Start the motor samples at the same crank angle. Their loops span a
-      // whole number of four-stroke cycles and all receive the same RPM ramp.
-      Promise.all(engineNames.map(name => this.load(name, soundUrl(name))))
-        .then(() => this.startEngineVoices());
-      for (const name of [...continuousSounds, ...Object.keys(cues)]) this.load(name, soundUrl(name));
+      this.loadVehicleSounds();
       this.syncMusic();
       return resumed;
+    }
+
+    engineAsset(name) {
+      return this.vehicleId === "ae86" ? truenoSounds[name] : name;
+    }
+
+    setVehicle(id) {
+      const vehicleId = id === "ae86" ? "ae86" : "neo86";
+      if (vehicleId === this.vehicleId) return;
+      this.vehicleId = vehicleId;
+      this.filteredLoad = this.compressorSpeed = this.intakeOpening = 0;
+      this.shiftStarted = -Infinity;
+      this.telemetry.gear = this.telemetry.boost = this.telemetry.engineLoad = this.telemetry.throttle = 0;
+      this.telemetry.rpm = vehicleId === "ae86" ? 850 : 1050;
+      this.pendingCue.clear();
+      if (!this.context) return;
+      const now = this.context.currentTime;
+      for (const name of engineNames) {
+        const old = this.loops.get(name);
+        if (!old) continue;
+        old.gain.gain.setTargetAtTime(0, now, 0.006);
+        old.source.stop(now + 0.045);
+        this.loops.delete(name);
+      }
+      const turbo = this.loops.get("turbo-spool");
+      if (turbo) this.ramp(turbo.gain.gain, 0, .008, now);
+      this.loadVehicleSounds();
+    }
+
+    loadVehicleSounds() {
+      const id = this.vehicleId;
+      // Only fetch the selected motor. A returning request from a previous
+      // choice may populate the cache, but it must never start that motor.
+      Promise.all(engineNames.map(name => {
+        const asset = this.engineAsset(name);
+        return this.load(asset, soundUrl(asset));
+      })).then(() => { if (id === this.vehicleId) this.startEngineVoices(); });
+      for (const name of [...continuousSounds, ...Object.keys(cues)]) {
+        if (id === "ae86" && (name === "turbo-spool" || name === "blowoff" || name === "afterfire")) continue;
+        this.load(name, soundUrl(name));
+      }
     }
 
     load(name, url) {
@@ -215,10 +255,10 @@
       return request;
     }
 
-    startLoop(name, bus, when, rate) {
+    startLoop(name, bus, when, rate, asset = name) {
       const ctx = this.context;
       const source = ctx.createBufferSource();
-      source.buffer = this.buffers.get(name);
+      source.buffer = this.buffers.get(asset);
       source.loop = true;
       source.playbackRate.value = rate;
       const gain = ctx.createGain();
@@ -230,7 +270,7 @@
     }
 
     startEngineVoices() {
-      const ready = engineNames.filter(name => this.buffers.has(name));
+      const ready = engineNames.filter(name => this.buffers.has(this.engineAsset(name)));
       if (ready.every(name => this.loops.has(name))) return;
       const ctx = this.context;
       const start = ctx.currentTime + 0.012;
@@ -243,7 +283,7 @@
           old.source.stop(start + 0.016);
         }
         const bus = name === "engine-intake" ? this.intakeFilter : this.engineFilter;
-        this.startLoop(name, bus, start, this.telemetry.rpm / engineRpm[name]);
+        this.startLoop(name, bus, start, this.telemetry.rpm / engineRpm[name], this.engineAsset(name));
       }
       this.mix();
     }
@@ -280,6 +320,7 @@
         this.shiftStarted = -Infinity;
         this.tireStrain = 0;
         this.compressorSpeed = 0;
+        this.intakeOpening = 0;
       }
       this.filteredLoad = this.telemetry.engineLoad;
       this.nextMix = 0;
@@ -308,14 +349,14 @@
       const gear = valid(data.gear);
       const slip = unit(data.slip);
       this.telemetry = {
-        rpm: clamp(valid(data.rpm, 1050), 750, 8600),
+        rpm: clamp(valid(data.rpm, this.vehicleId === "ae86" ? 850 : 1050), 750, 8600),
         speed: Math.abs(valid(data.speed)),
         gear,
         throttle, slip,
         brake,
         engineLoad: unit(valid(data.engineLoad, gear < 0 ? brake : throttle)),
         tireScrub: unit(valid(data.tireScrub, slip)),
-        boost: unit(data.boost),
+        boost: this.vehicleId === "ae86" ? 0 : unit(data.boost),
         hasAxleSlip: Number.isFinite(data.frontSlipAngle) && Number.isFinite(data.rearSlipAngle),
         frontSlipAngle: valid(data.frontSlipAngle), rearSlipAngle: valid(data.rearSlipAngle),
         rearLock: unit(valid(data.rearLock, data.handbrake ? 1 : 0)), wheelspin: unit(data.wheelspin),
@@ -346,6 +387,7 @@
       const { rpm, throttle, brake, gear, engineLoad, speed, angle, slip, tireScrub, handbrake,
         boost, hasAxleSlip, frontSlipAngle, rearSlipAngle, rearLock, wheelspin, cameraMode, wall } = this.telemetry;
       const pedal = gear < 0 ? brake : throttle;
+      const trueno = this.vehicleId === "ae86";
       const load = 0.84 * engineLoad + 0.16 * pedal;
       const throttleChange = load - this.filteredLoad;
       this.filteredLoad += throttleChange * (1 - Math.exp(-dt / 0.16));
@@ -353,7 +395,11 @@
       const low = smooth(1220, 2110, rpm);
       const mid = smooth(2630, 3550, rpm);
       const high = smooth(4440, 6100, rpm);
-      const onCam = smooth(3900, 6150, rpm);
+      // The early 4A-GEU opens its secondary intake runners in the middle
+      // of the rev range. Let the diaphragm settle through a shift or lift.
+      const openRunners = smooth(4150, 4470, rpm);
+      this.intakeOpening += (openRunners - this.intakeOpening) * (1 - Math.exp(-dt / .082));
+      const onCam = trueno ? this.intakeOpening : smooth(3900, 6150, rpm);
       const coast = smooth(1370, 2550, rpm) * (1 - smooth(0.045, 0.55, load));
       const shiftPower = 0.36 + 0.64 * smooth(0.045, 0.185, now - this.shiftStarted);
       const tipIn = Math.max(0, throttleChange);
@@ -371,8 +417,8 @@
       this.setLayer("engine-high", rpm / engineRpm["engine-high"], level(high), now);
       const coastLevel = (0.34 + 0.15 * smooth(1750, 5000, rpm)) * (0.77 + 0.23 * smooth(3, 27, speed));
       this.setLayer("engine-coast", rpm / engineRpm["engine-coast"], coast * coastLevel * tailLevel, now);
-      const intake = smooth(1460, 3070, rpm) *
-        ((0.17 + 0.28 * onCam) * load ** 1.55 + 0.30 * tipIn);
+      const inletGain = trueno ? .105 + .42 * onCam : .17 + .28 * onCam;
+      const intake = smooth(1460, 3070, rpm) * (inletGain * load ** 1.55 + 0.30 * tipIn);
       this.setLayer("engine-intake", rpm / engineRpm["engine-intake"], intake * shiftPower * inletLevel, now, 0.016);
       // The filling inlet is easier to hear than the wheel at settled
       // pressure. At steady boost engine airflow still changes with RPM.
@@ -388,7 +434,8 @@
         (1850 + 4130 * Math.sqrt(load) + rpm * 0.24), 0.045, now);
       this.ramp(this.intakeFilter.frequency, (bonnet ? 0.60 : 0.94) *
         (2400 + 3700 * load + 1200 * onCam + 1350 * tipIn), 0.028, now);
-      this.ramp(this.outlet.gain, bonnet ? 0.5 : 3.3 + 2.2 * (1 - low), 0.07, now);
+      const outletGain = trueno ? 1.75 + 1.3 * (1 - low) : 3.3 + 2.2 * (1 - low);
+      this.ramp(this.outlet.gain, bonnet ? 0.5 : outletGain, 0.07, now);
       this.ramp(this.motorBody.gain, bonnet ? 3.6 : 0, 0.07, now);
 
       if (wall) {
@@ -434,6 +481,7 @@
     event(name, strength = 1) {
       const cue = cues[name];
       if (!cue || !this.enabled || (!this.active && name !== "finish")) return;
+      if (this.vehicleId === "ae86" && (name === "blowoff" || name === "afterfire")) return;
       const buffer = this.buffers.get(name);
       if (!buffer || !this.context) {
         this.pendingCue.set(name, { time: performance.now(), strength });

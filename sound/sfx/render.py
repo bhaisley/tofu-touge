@@ -2,6 +2,7 @@
 
     python3 sound/sfx/render.py
     python3 sound/sfx/render.py --engine-only
+    python3 sound/sfx/render.py --trueno
     python3 sound/sfx/render.py --turbo-tires
     python3 sound/sfx/render.py --only turbo-spool
 
@@ -34,6 +35,8 @@ FIRING = {
 ACOUSTIC_PHASE = {
     "engine-idle": -0.120, "engine-low": -0.045, "engine-drive": 0.023,
     "engine-high": -0.127, "engine-coast": 0.148, "engine-intake": -0.135,
+    "trueno-idle": -0.167, "trueno-low": 0, "trueno-drive": 0.138,
+    "trueno-high": 0.463, "trueno-coast": 0.314, "trueno-intake": 0.400,
 }
 LOOPS = {
     "engine-idle": 3.75, "engine-low": 3.0, "engine-drive": 3.0,
@@ -42,6 +45,11 @@ LOOPS = {
     "turbo-spool": 3.0, "road-air": 2.5,
 }
 CUES = ["shift", "overrun", "blowoff", "afterfire", "impact", "checkpoint", "go", "finish"]
+NEO_ENGINE = list(FIRING)
+TRUENO_ENGINE = [name.replace("engine-", "trueno-") for name in NEO_ENGINE]
+for original, trueno in zip(NEO_ENGINE, TRUENO_ENGINE):
+    FIRING[trueno] = FIRING[original]
+    LOOPS[trueno] = LOOPS[original]
 
 
 def read_wav(path):
@@ -142,19 +150,23 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     bank = parser.add_mutually_exclusive_group()
     bank.add_argument("--engine-only", action="store_true", help="Render the engine, lift and shifter")
+    bank.add_argument("--trueno", action="store_true", help="Render the naturally aspirated Trueno engine bank")
     bank.add_argument("--turbo-tires", action="store_true", help="Render the turbo, tailpipe pops and tire voices")
     bank.add_argument("--only", choices=[*LOOPS, *CUES], help="Render a single named effect")
     args = parser.parse_args()
     sclang = os.environ.get("SCLANG") or shutil.which("sclang") or "/Applications/SuperCollider.app/Contents/MacOS/sclang"
     with tempfile.TemporaryDirectory(prefix="tofu-touge-sfx-") as temp:
         env = dict(os.environ, TOFU_SFX_RAW=temp, TOFU_SFX_ENGINE_ONLY="1" if args.engine_only else "0",
-                   TOFU_SFX_TURBO_TIRES="1" if args.turbo_tires else "0", TOFU_SFX_ONLY=args.only or "")
+                   TOFU_SFX_TURBO_TIRES="1" if args.turbo_tires else "0",
+                   TOFU_SFX_TRUENO="1" if args.trueno else "0", TOFU_SFX_ONLY=args.only or "")
         if sys.platform.startswith("linux"):
             env.setdefault("QT_QPA_PLATFORM", "offscreen")
         subprocess.run([sclang, "-D", str(HERE / "render.scd")], env=env, check=True, timeout=75)
         names = [*LOOPS, *CUES]
         if args.engine_only:
-            names = [*FIRING, "overrun", "shift"]
+            names = [*NEO_ENGINE, "overrun", "shift"]
+        elif args.trueno:
+            names = TRUENO_ENGINE
         elif args.turbo_tires:
             names = [name for name in names if name.startswith("tire-") or name in ("turbo-spool", "blowoff", "afterfire")]
         elif args.only:

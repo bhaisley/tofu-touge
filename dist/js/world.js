@@ -308,7 +308,7 @@
         const x=((i+.5)/w-.5)*width,z=(.5-(j+.5)/h)*length-.035;
         // The low underfloor cuts off skylight across the sill. At the tread,
         // ambient contact tightens to a short, much denser elliptical foot.
-        const floor=.72*Math.exp(-1.9*((x/.96)**4+(z/2.10)**6));
+        const floor=.72*Math.exp(-1.9*((x/(width*.96/2.52))**4+(z/(length*2.10/4.84))**6));
         let contact=0;
         for(const [axle,track] of [[axles.front,axles.frontTrack],[axles.rear,axles.rearTrack]])
           contact+=.89*Math.exp(-1.7*(((Math.abs(x)-track)/.238)**2+((z-axle)/.35)**2));
@@ -353,22 +353,23 @@
     }
   }
   const deferBuild=Symbol('defer world construction');
+  async function buildBatches(steps,pause=()=>new Promise(resolve=>setTimeout(resolve,0))){
+    let start=performance.now();
+    while(!steps.next().done){
+      if(performance.now()-start>=6){await pause();start=performance.now();}
+    }
+  }
   class World {
-    constructor(canvas,activeCourse,mode){
+    constructor(canvas,activeCourse,mode='neo86'){
       if(mode!==deferBuild){
-        const steps=this.build(canvas,activeCourse);
+        const steps=this.build(canvas,activeCourse,mode);
         while(!steps.next().done){/* Editors and reflection bakers need the complete scene immediately. */}
       }
     }
-    static async create(canvas,course,pause=()=>new Promise(resolve=>setTimeout(resolve,0))){
+    static async create(canvas,course,pause,vehicle='neo86'){
       const world=new this(canvas,course,deferBuild);
       try{
-        let start=performance.now();
-        const steps=world.build(canvas,course);
-        while(!steps.next().done){
-          if(performance.now()-start<6)continue;
-          await pause();start=performance.now();
-        }
+        await buildBatches(world.build(canvas,course,vehicle),pause);
         return world;
       }catch(error){world.dispose();throw error;}
     }
@@ -381,7 +382,7 @@
       if(!renderer.domElement.isConnected)renderer.forceContextLoss();
       renderer.dispose();
     }
-    *build(canvas,activeCourse){
+    *build(canvas,activeCourse,vehicle){
       const course=activeCourse.physicalCourse;
       this.renderer=new T.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance',alpha:false});
       this.renderer.outputColorSpace=T.SRGBColorSpace;this.renderer.toneMapping=T.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.04;
@@ -409,40 +410,66 @@
       this.forest=yield* window.addForest.steps(this.scene,course,groundAt,forestFloor,this.walls,this.sky);
       this.roadside=yield* window.addRoadside.steps(this.scene,course);
       this.rig=new T.Group();this.rig.rotation.order='YXZ';this.scene.add(this.rig);
-      this.car=yield* TougeNeo86.create.steps();this.rig.add(this.car.group);
-      yield;
-      TougeCarOcclusion.install(this.car);
-      this.carLighting=yield* TougePassReflections.install.steps(this.car.group,course);
-      yield;
       this.parkedStation=NaN;this.parkedMap=null;this.probeCenter=new T.Vector3();
-      const {front,rear,frontTrack,rearTrack,radius}=this.car.axles;
-      this.rollingScale=TougeDrive.rollingRadius/radius;
-      this.wheelLocations=[[-frontTrack,front],[frontTrack,front],[-rearTrack,rear],[rearTrack,rear]];
-      this.wheelContacts=this.wheelLocations.map(()=>new T.Vector3());
+      this.vehicles=new Map();this.vehicleProbes={};
+      this.wheelContacts=Array.from({length:4},()=>new T.Vector3());
       this.legOffsets=new Float32Array(4);
       this.bodyRoll=0;this.bodyPitch=0;
-      const map=discTexture();
-      const shade=new T.MeshBasicMaterial({map:chassisShadow(2.52,4.84,this.car.axles),color:0x10151a,transparent:true,opacity:.85,
-        depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2});
-      this.groundPatches=[new GroundPatch(this.scene,shade,2.52,4.84,0,-.035,7)];
-      this.tailReflection=new T.MeshBasicMaterial({map,color:0xfb4222,transparent:true,opacity:.095,
+      this.tailReflection=new T.MeshBasicMaterial({map:discTexture(),color:0xfb4222,transparent:true,opacity:.095,
         depthWrite:false,blending:T.AdditiveBlending,polygonOffset:true,polygonOffsetFactor:-2});
-      this.headlamps=[];
-      for(const side of [-1,1]){
-        const light=new T.SpotLight(0xffe7be,82,45,.39,.61,1.55);
-        light.position.set(side*.595,.639,-2.079);light.target.position.set(side*.81,-.7,-24);
-        this.car.body.add(light,light.target);
-        this.headlamps.push(light);
-        this.groundPatches.push(new GroundPatch(this.scene,this.tailReflection,.75,1.72,side*.635,2.33,3));
-      }
+      yield* this.mountVehicle(typeof vehicle==='function'?vehicle():vehicle,course);
       this.effects=new TougeDriftEffects(this.scene,this.car,this.roadHeight,course.half);
       this.spray=new TougeTireSpray(this.scene,this.wetRoad);
       this.wetRoad.exclude(this.effects.trails.mesh);
       this.shake=0;this.elapsed=0;this.cameraReady=false;
       this.scale=window.devicePixelRatio||1;this.slowTime=0;this.fastTime=0;
-      this.preparedCourses=new Set();
       this.resize();
       this.setCourse(activeCourse);
+    }
+    *mountVehicle(id,course){
+      if(id===this.vehicleId)return;
+      let kit=this.vehicles.get(id);
+      if(!kit){
+        const model=id==='ae86'?TougeAE86:TougeNeo86;
+        const car=yield* model.create.steps();
+        yield;
+        if(id==='neo86')TougeCarOcclusion.install(car);
+        const reflections=yield* TougePassReflections.install.steps(car.group,course,this.vehicleProbes);
+        yield;
+        const mounts=car.mounts||{};
+        const [width,length]=mounts.shadowSize||[2.52,4.84];
+        const shade=new T.MeshBasicMaterial({map:chassisShadow(width,length,car.axles),color:0x10151a,
+          transparent:true,opacity:.85,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2});
+        const ground=new T.Group(),patches=[new GroundPatch(ground,shade,width,length,0,-.035,7)];
+        const [x,y,z]=mounts.headlamp||[.595,.639,-2.079],lamps=[];
+        const [tailX,tailZ]=mounts.tailLamp||[.635,2.33];
+        for(const side of [-1,1]){
+          const light=new T.SpotLight(0xffe7be,82,45,.39,.61,1.55);
+          light.position.set(side*x,y,z);car.body.add(light,light.target);lamps.push(light);
+          patches.push(new GroundPatch(ground,this.tailReflection,.75,1.72,side*tailX,tailZ,3));
+        }
+        const {front,rear,frontTrack,rearTrack}=car.axles;
+        const contacts=[[-frontTrack,front],[frontTrack,front],[-rearTrack,rear],[rearTrack,rear]];
+        kit={car,ground,patches,lamps,contacts,reflections,prepared:new Set()};
+        this.vehicles.set(id,kit);
+      }
+      if(this.car){
+        this.carLighting.setParked(null);
+        this.rig.remove(this.car.group);
+        this.scene.remove(this.vehicles.get(this.vehicleId).ground);
+      }
+      this.rig.add(kit.car.group);this.scene.add(kit.ground);
+      this.vehicleId=id;this.car=kit.car;this.carLighting=kit.reflections;
+      this.headlamps=kit.lamps;this.groundPatches=kit.patches;
+      this.wheelLocations=kit.contacts;this.preparedCourses=kit.prepared;
+      if(this.effects){
+        this.effects.setCar(this.car);
+        this.setCarLighting(this.course.night);
+        this.placementId=undefined;this.reset();
+      }
+    }
+    setVehicle(id,pause){
+      return buildBatches(this.mountVehicle(id,this.course.physicalCourse),pause);
     }
     async warmGraphics(pause){
       const {renderer,scene,camera}=this;
@@ -515,17 +542,21 @@
       this.scene.fog.density=fuji?(night?.00165:.00145):(night?.0026:.00215);
       this.forest.userData.setNight(night);this.roadside.userData.setNight(night);
       this.routeMarkings[0].visible=course.direction>0;this.routeMarkings[1].visible=course.direction<0;
-      this.wetRoad.setCourse(course);this.carLighting.setNight(night);
+      this.wetRoad.setCourse(course);
+      this.setCarLighting(night);
+      this.placementId=undefined;this.reset();
+    }
+    setCarLighting(night){
+      this.carLighting.setNight(night);this.car.setNight?.(night);
       if(night && !this.dippedBeam)this.dippedBeam=TougeLighting.headlampPattern();
       for(const light of this.headlamps){
         const side=Math.sign(light.position.x);
         light.map=night?this.dippedBeam:null;light.color.setHex(night?0xffecd5:0xffe7be);
-        light.intensity=night?1500:82;light.distance=night?91:45;light.decay=night?1.86:1.55;
+        light.intensity=night?1500:this.vehicleId==='ae86'?0:82;light.distance=night?91:45;light.decay=night?1.86:1.55;
         light.angle=night?.47:.39;light.penumbra=night?.56:.61;
         light.target.position.set(side*(night?1.34:.81),night?-.05:-.7,night?-34:-24);
       }
       this.parkedMap?.dispose();this.parkedMap=null;this.parkedStation=NaN;
-      this.placementId=undefined;this.reset();
       // At night the extinguished exhaust lights still belong to the lighting
       // layout. Register them before warming the grid's reflection and paint
       // programs so the first simulation tick uses the same shader variants.
@@ -717,7 +748,8 @@
       this.bodyRoll=cut?targetRoll:mix(this.bodyRoll,targetRoll,1-Math.exp(-dt*11));
       this.bodyPitch=cut?targetPitch:mix(this.bodyPitch,targetPitch,1-Math.exp(-dt*10));
       const brake=clamp(Math.max(c.brake||0,c.handbrake?.72:0),0,1);
-      this.car.setMotion({wheelAngle:c.wheelAngle*this.rollingScale,rearWheelAngle:c.rearWheelAngle*this.rollingScale,
+      const rollingScale=(c.rollingRadius??TougeDrive.rollingRadius)/this.car.axles.radius;
+      this.car.setMotion({wheelAngle:c.wheelAngle*rollingScale,rearWheelAngle:c.rearWheelAngle*rollingScale,
         steer:-(c.steerAngle??c.wheel*.44),brake,bodyRoll:this.bodyRoll,bodyPitch:this.bodyPitch,
         suspensionOffsets:this.legOffsets});
       this.tailReflection.opacity=this.course.night?.086+.18*brake:.027+.075*brake;
@@ -729,8 +761,10 @@
       else if(bonnet){
         // Place the lens just forward of the windshield in the sprung frame.
         // The cowl/bonnet remain below the near plane through roll and pitch.
-        this.car.body.localToWorld(this.targetPos.set(.15,1.085,-.83));
-        this.car.body.localToWorld(this.look.set(.15,.545,-30));
+        const mounts=this.car.mounts;
+        if(mounts?.bonnetEye)this.targetPos.fromArray(mounts.bonnetEye);else this.targetPos.set(.15,1.085,-.83);
+        if(mounts?.bonnetLook)this.look.fromArray(mounts.bonnetLook);else this.look.set(.15,.545,-30);
+        this.car.body.localToWorld(this.targetPos);this.car.body.localToWorld(this.look);
         this.camera.position.copy(this.targetPos);
       }else{
         this.positionChase(dt,c,cut);

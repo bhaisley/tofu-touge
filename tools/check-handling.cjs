@@ -36,8 +36,8 @@ function simulate(drive, input, seconds) {
   for (let i = 0; i < Math.round(seconds / dt); i++) drive.step(dt, input);
 }
 
-function straightBench() {
-  const drive = new TougeDrive(new Skidpad());
+function straightBench(vehicle) {
+  const drive = new TougeDrive(new Skidpad(), vehicle);
   while (drive.kmh < 100 && drive.time < 16) drive.step(dt, { throttle: 1 });
   assert(drive.kmh >= 100 && drive.gear >= 3, 'the automatic gearbox must deliver a clean launch');
   const hundred = drive.time;
@@ -122,7 +122,7 @@ function setupHairpin(drive, station, turn, speed) {
   drive.contact.offset = outside;
   drive.speed = speed;
   drive.gear = 2;
-  drive.rpm = drive.speed / 0.287 * 60 / (2 * Math.PI) * 2.02 * 4.3;
+  drive.rpm = drive.speed / drive.rollingRadius * 60 / (2 * Math.PI) * drive.tune.ratios[1] * drive.tune.finalDrive;
 }
 
 function hairpinInput(drive, time, keyboard, turn, hold) {
@@ -140,8 +140,8 @@ function hairpinInput(drive, time, keyboard, turn, hold) {
   return followLine(drive);
 }
 
-function hairpinBench(course, keyboard, {station=543, turn=-1, speed=17, hold=keyboard?2.6:2.7} = {}) {
-  const drive = new TougeDrive(course);
+function hairpinBench(course, keyboard, {station=543, turn=-1, speed=17, hold=keyboard?2.6:2.7, vehicle} = {}) {
+  const drive = new TougeDrive(course, vehicle);
   setupHairpin(drive, station, turn, speed);
   let maxAngle = 0, slidingTime = 0, scrubTime = 0, maxOffset = 0, railContacts = 0;
   let counterTime = 0, lockedRear = false, banked = false, driftExit = false;
@@ -166,7 +166,7 @@ function hairpinBench(course, keyboard, {station=543, turn=-1, speed=17, hold=ke
       driftExit = true;
     }
     const relative = wrap(drive.heading - drive.contact.heading);
-    const reach = 0.82 * Math.abs(Math.cos(relative)) + 1.98 * Math.abs(Math.sin(relative));
+    const reach = drive.tune.halfWidth * Math.abs(Math.cos(relative)) + drive.tune.halfLength * Math.abs(Math.sin(relative));
     const railClearance = course.half + 1.54 - reach - Math.abs(drive.contact.offset);
     if (railClearance < 0.005) railContacts++;
     for (const event of drive.events) if (event.type === 'bank') banked = true;
@@ -181,8 +181,8 @@ function hairpinBench(course, keyboard, {station=543, turn=-1, speed=17, hold=ke
     peakOffsetMetres: rounded(maxOffset), score: drive.score, integrity: drive.integrity, railContacts };
 }
 
-function fullRoute(course) {
-  const drive = new TougeDrive(course);
+function fullRoute(course, vehicle) {
+  const drive = new TougeDrive(course, vehicle);
   let shifts = 0, maxSpeed = 0;
   for (let i = 0; i < 260 / dt && !drive.finished; i++) {
     drive.step(dt, followLine(drive, 27, 5.15));
@@ -258,8 +258,14 @@ if (require.main === module) {
   for(const approach of [mikuni,mikuni.reversed()]){
     assert(Math.abs(wrap(approach.sample(approach.start).heading-summit))*degrees<12);
   }
+  const wetStraight = straightBench(), truenoStraight = straightBench('ae86');
+  assert(truenoStraight.zeroTo100Seconds > wetStraight.zeroTo100Seconds + 1.3);
+  assert(truenoStraight.stopFrom100Metres > wetStraight.stopFrom100Metres);
   console.log(JSON.stringify({
-    wetStraight: straightBench(),
+    wetStraight,
+    truenoStraight,
+    truenoHairpin: hairpinBench(course, false, {vehicle:'ae86', speed:16.5, hold:2.25}),
+    truenoDeliveries: [course,course.reversed(),mikuni,mikuni.reversed()].map(route=>fullRoute(route,'ae86')),
     fullLockTrailBrake: stabilityBench(),
     secondGearThrottleSteer: throttleSteerBench(),
     analogHairpin: hairpinBench(course, false),
