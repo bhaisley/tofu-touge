@@ -2,7 +2,7 @@
   'use strict';
 
   const linearFields = [
-    'x', 'z', 'speed', 'yaw', 'wheel', 'steerAngle', 'wheelAngle', 'rearWheelAngle',
+    'x', 'z', 'speed', 'yaw', 'wheel', 'steerAngle', 'rearSteer', 'wheelAngle', 'rearWheelAngle',
     'brake', 'slip', 'tireScrub', 'rearSlipAngle', 'wheelspin', 'rearLock', 'longitudinalG', 'lateralG'
   ];
   const mix = (a, b, t) => a + (b - a) * t;

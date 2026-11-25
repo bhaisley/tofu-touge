@@ -170,6 +170,8 @@
     });
   }
 
+  Object.assign(window.TougeCarGeometry,{heatedHatch,sealedBeam,combinationLens,buildDriver});
+
   function materials() {
     const surface = (roughness, metalness, extra = {}) => new THREE.MeshStandardMaterial({
       vertexColors: true, roughness, metalness, ...extra

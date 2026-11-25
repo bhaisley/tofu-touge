@@ -474,8 +474,8 @@
       if(id===this.vehicleId)return;
       let kit=this.vehicles.get(id);
       if(!kit){
-        const model=id==='ae86'?TougeAE86:TougeNeo86;
-        const car=yield* model.create.steps();
+        const model=TougeRivals.cars[id]?TougeRivalModels:id==='ae86'?TougeAE86:TougeNeo86;
+        const car=yield* model.create.steps(id);
         if(course.mapId==='fuji'){
           // In chase view the car and the road cover much of the near slope.
           // Let their opaque pixels reject the multilayer terrain shading.
@@ -618,7 +618,7 @@
       for(const light of this.headlamps){
         const side=Math.sign(light.position.x);
         light.map=night?this.dippedBeam:null;light.color.setHex(night?0xffecd5:0xffe7be);
-        light.intensity=night?1500:this.vehicleId==='ae86'?0:82;light.distance=night?91:45;light.decay=night?1.86:1.55;
+        light.intensity=night?1500:['ae86','fd3s','fc3s'].includes(this.vehicleId)?0:82;light.distance=night?91:45;light.decay=night?1.86:1.55;
         light.angle=night?.47:.39;light.penumbra=night?.56:.61;
         light.target.position.set(side*(night?1.34:.81),night?-.05:-.7,night?-34:-24);
       }
@@ -810,14 +810,14 @@
       if(placed){this.placementId=c.placementId;this.effects.cut();this.spray.clear();this.shake=0;}
       this.plantWheels(c);
       const rightG=c.lateralG??c.yaw*c.speed/9.81;
-      const targetRoll=clamp(rightG,-1.25,1.25)*.032;
+      const targetRoll=clamp(rightG,-1.25,1.25)*(TougeRivals.cars[this.vehicleId]?.roll??.032);
       const targetPitch=clamp(c.longitudinalG??0,-1.3,1.15)*.021;
       this.bodyRoll=cut?targetRoll:mix(this.bodyRoll,targetRoll,1-Math.exp(-dt*11));
       this.bodyPitch=cut?targetPitch:mix(this.bodyPitch,targetPitch,1-Math.exp(-dt*10));
       const brake=clamp(Math.max(c.brake||0,c.handbrake?.72:0),0,1);
       const rollingScale=(c.rollingRadius??TougeDrive.rollingRadius)/this.car.axles.radius;
       this.car.setMotion({wheelAngle:c.wheelAngle*rollingScale,rearWheelAngle:c.rearWheelAngle*rollingScale,
-        steer:-(c.steerAngle??c.wheel*.44),brake,bodyRoll:this.bodyRoll,bodyPitch:this.bodyPitch,
+        steer:-(c.steerAngle??c.wheel*.44),rearSteer:-(c.rearSteer||0),brake,bodyRoll:this.bodyRoll,bodyPitch:this.bodyPitch,
         suspensionOffsets:this.legOffsets,reversing:c.gear<0});
       this.tailReflection.opacity=this.course.night?.086+.18*brake:.027+.075*brake;
       const speed=Math.abs(c.speed);

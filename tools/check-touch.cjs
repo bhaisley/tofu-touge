@@ -45,6 +45,25 @@ async function main() {
       assert(!overlap(picker,await page.locator('.topbar').boundingBox()),'Course selector overlaps the header at '+width+'×'+height);
     }
     await page.setViewportSize({width:390,height:844});
+    await page.locator('#view-car').tap();
+    await page.waitForFunction(()=>document.body.dataset.state==='viewcar',null,{timeout:90000});
+    for(const [width,height] of layouts){
+      await page.setViewportSize({width,height});
+      const targets=await page.locator('.garage-picker button').evaluateAll(nodes=>nodes.map(el=>{
+        const {x,y,width,height}=el.getBoundingClientRect();
+        return {id:el.dataset.vehicle,x,y,width,height,hit:el===document.elementFromPoint(x+width/2,y+height/2)};
+      }));
+      assert.equal(targets.length,6);
+      for(const [i,t] of targets.entries()){
+        assert(t.hit&&t.width>=44&&t.height>=44&&t.x>=0&&t.y>=0&&t.x+t.width<=width+.1&&t.y+t.height<=height,
+          t.id+' garage button at '+width+'×'+height);
+        for(const other of targets.slice(i+1))assert(!overlap(t,other));
+      }
+    }
+    await page.setViewportSize({width:390,height:844});
+    await page.locator('[data-vehicle="bnr32"]').tap();await page.waitForFunction(()=>testDrive.vehicleId==='bnr32',null,{timeout:90000});
+    await page.locator('[data-vehicle="neo86"]').tap();await page.waitForFunction(()=>testDrive.vehicleId==='neo86',null,{timeout:90000});
+    await page.locator('#car-back').tap();
     await page.locator('#radio-btn').tap();
     const fx=page.locator('#sound-volume'), music=page.locator('#music-volume');
     await fx.focus();await fx.press('Home');

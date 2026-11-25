@@ -2,6 +2,7 @@
 
     python3 sound/sfx/render.py
     python3 sound/sfx/render.py --engine-only
+    python3 sound/sfx/render.py --rivals
     python3 sound/sfx/render.py --trueno
     python3 sound/sfx/render.py --turbo-tires
     python3 sound/sfx/render.py --only turbo-spool
@@ -50,6 +51,15 @@ TRUENO_ENGINE = [name.replace("engine-", "trueno-") for name in NEO_ENGINE]
 for original, trueno in zip(NEO_ENGINE, TRUENO_ENGINE):
     FIRING[trueno] = FIRING[original]
     LOOPS[trueno] = LOOPS[original]
+
+RIVALS = []
+for prefix in ("fd3s", "fc3s", "gc8", "bnr32"):
+    for original in NEO_ENGINE:
+        name = original.replace("engine-", prefix + "-")
+        FIRING[name] = FIRING[original]
+        LOOPS[name] = LOOPS[original]
+        ACOUSTIC_PHASE[name] = 0
+        RIVALS.append(name)
 
 
 def read_wav(path):
@@ -151,6 +161,7 @@ def main():
     bank = parser.add_mutually_exclusive_group()
     bank.add_argument("--engine-only", action="store_true", help="Render the engine, lift and shifter")
     bank.add_argument("--trueno", action="store_true", help="Render the naturally aspirated Trueno engine bank")
+    bank.add_argument("--rivals", action="store_true", help="Render the four mountain rivals")
     bank.add_argument("--turbo-tires", action="store_true", help="Render the turbo, tailpipe pops and tire voices")
     bank.add_argument("--only", choices=[*LOOPS, *CUES], help="Render a single named effect")
     args = parser.parse_args()
@@ -158,6 +169,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="tofu-touge-sfx-") as temp:
         env = dict(os.environ, TOFU_SFX_RAW=temp, TOFU_SFX_ENGINE_ONLY="1" if args.engine_only else "0",
                    TOFU_SFX_TURBO_TIRES="1" if args.turbo_tires else "0",
+                   TOFU_SFX_RIVALS="1" if args.rivals else "0",
                    TOFU_SFX_TRUENO="1" if args.trueno else "0", TOFU_SFX_ONLY=args.only or "")
         if sys.platform.startswith("linux"):
             env.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -165,6 +177,8 @@ def main():
         names = [*LOOPS, *CUES]
         if args.engine_only:
             names = [*NEO_ENGINE, "overrun", "shift"]
+        elif args.rivals:
+            names = RIVALS
         elif args.trueno:
             names = TRUENO_ENGINE
         elif args.turbo_tires:

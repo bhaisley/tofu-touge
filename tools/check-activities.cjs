@@ -40,7 +40,7 @@ function waterTest(){
   for(let i=0;i<480;i++)smooth.step(dt,0,0);
   assert(Math.hypot(smooth.x,smooth.y)<.001);
   const deliveries={};
-  for(const car of ['neo86','ae86']){
+  for(const car of ['neo86','ae86',...Object.keys(TougeRivals.cars)]){
     const d=new TougeDrive(new TougeCourse(),car),cup=new WaterCup();
     while(!d.finished&&d.time<320){d.step(dt,followLine(d,24,4.6));cup.step(dt,d.lateralG,d.longitudinalG);}
     assert(d.finished&&d.integrity===100&&cup.water>=90);

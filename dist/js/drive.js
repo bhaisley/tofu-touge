@@ -45,15 +45,28 @@
   // At 6,600 rpm, 138.35 N m gives the period 130 PS gross power rating.
   const truenoCurve = [[850, 85], [2000, 107], [3300, 123], [4300, 135],
     [5200, 149.06], [6000, 145], [6600, 138.35], [7100, 124], [7430, 107], [7600, 0]];
-  function truenoTorque(rpm) {
-    for (let i = 1; i < truenoCurve.length; i++) {
-      const [end, torque] = truenoCurve[i];
+  function truenoTorque(rpm) { return curveTorque(truenoCurve,rpm); }
+  function curveTorque(curve,rpm) {
+    for (let i = 1; i < curve.length; i++) {
+      const [end, torque] = curve[i];
       if (rpm <= end) {
-        const [start, previous] = truenoCurve[i - 1];
+        const [start, previous] = curve[i - 1];
         return lerp(previous, torque, clamp((rpm - start) / (end - start), 0, 1));
       }
     }
     return 0;
+  }
+
+  for (const [id, s] of Object.entries(window.TougeRivals?.cars || {})) {
+    cars[id] = {
+      mass:s.curb+65, inertia:s.inertia, wheelbase:s.wheelbase, frontArm:s.wheelbase*(1-s.frontWeight), cgHeight:s.cg,
+      tireRadius:s.wheel[0]*.973, halfWidth:s.width/2, halfLength:s.length/2,
+      frontGrip:s.grip[0], rearGrip:s.grip[1], frontStiffness:s.stiffness[0], rearStiffness:s.stiffness[1],
+      ratios:s.ratios, reverseRatio:s.reverse, finalDrive:s.final, torque:rpm=>curveTorque(s.torque,rpm),
+      efficiency:s.drive==='rwd'?.88:.84, drive:s.drive, launch:s.launch, turbo:true, spool:s.spool, boostBar:s.boostBar, boostShare:s.boostShare,
+      idle:s.idle, rollingIdle:s.idle, redline:s.redline, limiter:s.redline-55, shiftRpm:s.shift,
+      shiftSeconds:s.drive==='attesa'?.245:.215, overrun:s.drive==='rwd'?.61:.81
+    };
   }
 
   function tireForce(angle, corneringStiffness, peakForce, longitudinalForce, falloff) {
@@ -77,7 +90,7 @@
     }
 
     setVehicle(id) {
-      const vehicleId = id === 'ae86' ? 'ae86' : 'neo86';
+      const vehicleId = Object.prototype.hasOwnProperty.call(cars,id) ? id : 'neo86';
       if (this.vehicleId === vehicleId) return;
       this.vehicleId = vehicleId;
       this.tune = cars[vehicleId];
@@ -134,7 +147,9 @@
       this.afterfireStrength = 0;
       this.wheelspin = 0;
       this.rearDriveFraction = 0;
+      this.frontDriveShare = this.tune.drive === 'dccd' ? .35 : 0;
       this.frontSlipAngle = 0;
+      this.rearSteer = 0;
       this.rearSlipAngle = 0;
       this.longitudinalG = 0;
       this.lateralG = 0;
@@ -207,8 +222,9 @@
       // throttle cut empties the inlet while the rotating assembly coasts.
       const pedal = this.gear > 0 ? this.throttle : 0;
       const coupled = (1 - .76 * this.rearLock) * (this.shiftTime > 0 ? .15 : 1);
-      const exhaust = smooth(1550, 4300, this.rpm) * smooth(.08, .92, this.engineLoad) * coupled;
-      this.turboSpeed = follow(this.turboSpeed, exhaust, exhaust > this.turboSpeed ? 3.0 : 2.4, dt);
+      const spool = this.tune.spool;
+      const exhaust = smooth(spool?.[0] ?? 1550, spool?.[1] ?? 4300, this.rpm) * smooth(.08, .92, this.engineLoad) * coupled;
+      this.turboSpeed = follow(this.turboSpeed, exhaust, exhaust > this.turboSpeed ? (spool?.[2] ?? 3.0) : 2.4, dt);
       const target = this.turboSpeed * smooth(.13, .89, pedal * coupled);
       const lift = pedal < .49 && this.turboPedal - pedal > .23;
       this.valveRecovery = Math.max(0, this.valveRecovery - dt);
@@ -299,7 +315,14 @@
       // The low-speed denominator is a tire relaxation speed. It keeps the
       // contact patch well conditioned when changing direction from rest.
       this.frontSlipAngle = Math.atan2(frontLateral, Math.max(2.8, Math.abs(frontForward)));
-      this.rearSlipAngle = Math.atan2(rearV, Math.max(2.8, Math.abs(u)));
+      // R32 rear steering adds a small same-phase angle at road speed. The
+      // FC's compliance bushings instead induce a small response to axle load.
+      const rearRequest=tune.drive==='attesa' ? clamp(this.steerAngle*.10,-.014,.014)*smooth(8,24,speed) :
+        this.vehicleId==='fc3s' ? .006*clamp(this.lateralG,-1,1) : 0;
+      this.rearSteer=follow(this.rearSteer,rearRequest*(1-this.rearLock),9,dt);
+      const rs=Math.sin(this.rearSteer),rc=Math.cos(this.rearSteer);
+      const rearForward=u*rc+rearV*rs;
+      this.rearSlipAngle=Math.atan2(rearV*rc-u*rs,Math.max(2.8,Math.abs(rearForward)));
 
       const bodyRoad = wrap(h - p.heading);
       const cross = Math.sin(bodyRoad);
@@ -319,9 +342,10 @@
       const load = pedal * (this.shiftTime > 0 ? 0.20 : 1);
       this.engineLoad = follow(this.engineLoad, load, load > this.engineLoad ? 13 : 23, dt);
 
-      // The wastegate limits gauge pressure to .35 bar. Charge heating and
-      // pumping losses leave an 18% peak torque increase at the wheels.
-      let motive = this.engineLoad * tune.torque(this.rpm) * (1 + .18 * this.boost) * ratio * tune.efficiency / tireRadius;
+      // Rivals' torque curves describe a fully charged engine. The NEO86
+      // curve describes off-boost torque, with the wastegate set to .35 bar.
+      const charge = tune.boostShare ? 1-tune.boostShare*(1-this.boost) : 1+.18*this.boost;
+      let motive = this.engineLoad * tune.torque(this.rpm) * charge * ratio * tune.efficiency / tireRadius;
       if (reverse) motive = -Math.min(motive, mass * 3.2) * (1 - smooth(5.1, 6.6, -u));
       if (!reverse && speed > 4) {
         const overrun = (1 - this.throttle) * (0.19 + this.rpm / 7100 * tune.overrun);
@@ -329,11 +353,20 @@
       }
       // Disengage the clutch while the hydraulic handbrake locks the rear.
       motive *= 1 - 0.84 * this.rearLock;
-      this.rearDriveFraction = Math.max(0, motive) / rearCapacity;
+      if (tune.drive === 'dccd' || tune.drive === 'attesa') {
+        const demand = Math.max(0,motive)/rearCapacity;
+        const tractionLoss = clamp(.85*smooth(.83,1.42,demand) + .42*this.wheelspin +
+          .38*smooth(.07,.31,Math.abs(this.rearSlipAngle))*this.engineLoad,0,1);
+        const requested = tune.drive === 'dccd' ? .35+.13*tractionLoss : .50*tractionLoss;
+        const target = requested*(1-this.rearLock);
+        this.frontDriveShare = follow(this.frontDriveShare,target,target>this.frontDriveShare?7.2:4.4,dt);
+      }
+      const frontMotive=motive*this.frontDriveShare, rearMotive=motive-frontMotive;
+      this.rearDriveFraction = Math.max(0,rearMotive)/rearCapacity;
       const rollingSign = Math.sign(u);
       const brakeDemand = mass * gravity * 1.08 * footbrake;
-      const frontFx = clamp(-rollingSign * brakeDemand * 0.65, -frontCapacity * 0.94, frontCapacity * 0.94);
-      const rearDemand = motive - rollingSign *
+      const frontFx = clamp(frontMotive - rollingSign * brakeDemand * 0.65, -frontCapacity * 0.94, frontCapacity * 0.94);
+      const rearDemand = rearMotive - rollingSign *
         (brakeDemand * 0.35 + rearCapacity * 1.12 * this.rearLock);
       const rearFx = clamp(rearDemand, -rearCapacity * 0.97, rearCapacity * 0.97);
 
@@ -341,8 +374,9 @@
       const rearGrip = (1 - this.loose * (0.19 + 0.20 * this.engineLoad)) * (1 - 0.60 * this.rearLock);
       const rearFy = tireForce(this.rearSlipAngle, tune.rearStiffness, rearCapacity, rearFx, 0.105) * rearGrip;
       const frontBodyY = frontFx * wheelSin + frontFy * wheelCos;
-      let ax = (frontFx * wheelCos - frontFy * wheelSin + rearFx) / mass;
-      let ay = (frontBodyY + rearFy) / mass;
+      const rearBodyY=rearFx*rs+rearFy*rc;
+      let ax = (frontFx*wheelCos-frontFy*wheelSin+rearFx*rc-rearFy*rs)/mass;
+      let ay = (frontBodyY+rearBodyY)/mass;
       const skinDrag = speed > 0.01 ? 0.115 + 0.00048 * speed * speed + (frontEdge + rearEdge) * 0.78 : 0;
       ax -= skinDrag * u / Math.max(0.2, speed);
       ay -= skinDrag * v / Math.max(0.2, speed);
@@ -368,7 +402,7 @@
       ax += terrainForward * along + terrainAcross * cross;
       ay += -terrainForward * cross + terrainAcross * along;
 
-      const naturalYaw = (frontArm * frontBodyY - rearArm * rearFy) / inertia;
+      const naturalYaw = (frontArm * frontBodyY - rearArm * rearBodyY) / inertia;
       // A light yaw-rate damper makes a released key settle on the same line.
       const rateLimit = Math.min(1.47, 11.8 / Math.max(speed, 3));
       const gripYaw = clamp(u * Math.tan(this.steerAngle) / wheelbase, -rateLimit, rateLimit);
@@ -384,7 +418,7 @@
       let yawAcceleration = lerp(naturalYaw + gripCorrection, stabilityMoment, 0.95 * stability);
       if (this.loose > 0) {
         const intoCorner = this.slideSign * this.wheel;
-        const targetAngle = this.slideSign * clamp(0.18 + this.throttle * 0.26 + 0.37 * intoCorner, -0.07, 0.72);
+        const targetAngle = this.slideSign * (1-.38*this.frontDriveShare) * clamp(0.18 + this.throttle * 0.26 + 0.37 * intoCorner, -0.07, 0.72);
         const angleError = wrap(targetAngle - this.angle);
         const targetYaw = pathAcceleration / Math.max(5, speed) + clamp(angleError * 3.9, -1.75, 1.75);
         const slideYaw = naturalYaw * 0.18 + clamp((targetYaw - this.yaw) * 7.9, -7.2, 7.2);
@@ -420,7 +454,8 @@
       this.wheelAngle += frontForward * dt / tireRadius;
       this.rearWheelAngle += u * rollingRear * dt / tireRadius;
       const wheelRpm = Math.abs(u / tireRadius) * 60 / (2 * Math.PI);
-      let rpmTarget = Math.max(tune.rollingIdle + pedal * 1580, wheelRpm * ratio * (1 + this.wheelspin * 0.32));
+      const launchLift=tune.launch && this.gear===1 ? (tune.launch-tune.rollingIdle) : 1580;
+      let rpmTarget = Math.max(tune.rollingIdle + pedal * launchLift, wheelRpm * ratio * (1 + this.wheelspin * 0.32));
       rpmTarget = lerp(rpmTarget, tune.rollingIdle + 90 + pedal * 5350, 0.6 * this.rearLock);
       this.rpm = follow(this.rpm, clamp(rpmTarget, tune.rollingIdle - 50, tune.limiter), 12, dt);
 

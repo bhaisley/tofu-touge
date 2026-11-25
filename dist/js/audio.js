@@ -183,17 +183,18 @@
     }
 
     engineAsset(name) {
-      return this.vehicleId === "ae86" ? truenoSounds[name] : name;
+      if (this.vehicleId === "ae86") return truenoSounds[name];
+      return this.vehicleId === "neo86" ? name : name.replace("engine-",this.vehicleId+"-");
     }
 
     setVehicle(id) {
-      const vehicleId = id === "ae86" ? "ae86" : "neo86";
+      const vehicleId = id === "ae86" || Object.prototype.hasOwnProperty.call(window.TougeRivals?.cars||{},id) ? id : "neo86";
       if (vehicleId === this.vehicleId) return;
       this.vehicleId = vehicleId;
       this.filteredLoad = this.compressorSpeed = this.intakeOpening = 0;
       this.shiftStarted = -Infinity;
       this.telemetry.gear = this.telemetry.boost = this.telemetry.engineLoad = this.telemetry.throttle = 0;
-      this.telemetry.rpm = vehicleId === "ae86" ? 850 : 1050;
+      this.telemetry.rpm = window.TougeRivals?.cars[vehicleId]?.idle ?? (vehicleId === "ae86" ? 850 : 1050);
       this.pendingCue.clear();
       if (!this.context) return;
       const now = this.context.currentTime;

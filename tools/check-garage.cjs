@@ -83,10 +83,40 @@ async function main(){
     assert(await page.evaluate(()=>garageWorld!==lostGarage && garageWorld.vehicles.size===1));
     await page.keyboard.press('Escape');await click('#to-menu');await page.reload();await state('menu');
     assert.equal(await page.locator('body').getAttribute('data-car'),'ae86');
-    await click('#next-car');await click('button[data-map="haruna"]');await click('button[data-stage="downhill"]');
+    await click('#view-car');await state('viewcar');await click('[data-vehicle="neo86"]');await ready('neo86');
+    await click('#car-back');await click('button[data-map="haruna"]');await click('button[data-stage="downhill"]');
     assert.match(await page.locator('#menu-record').textContent(),/02:17\.21/);
     await click('#start-btn');await state('racing');await ready('neo86');assert(await page.locator('#boost').isVisible());
-    assert.deepEqual(errors,[]);console.log('Both cars passed selection, garage switching, race/restart, persistence, independent records, WebGL recovery and day/night drive checks.');
+    for(const [id,stage,nickname] of [['fd3s','downhill','FD3S'],['fc3s','uphill','FC3S'],['gc8','downhill','GC8'],['bnr32','uphill','BNR32']]){
+      await page.keyboard.press('Escape');await click('#to-menu');await state('menu');
+      await click('button[data-stage="'+stage+'"]');await click('#view-car');await state('viewcar');
+      await click('[data-vehicle="'+id+'"]');await ready(id);
+      assert.match(await page.locator('#garage-car').textContent(),new RegExp(nickname));
+      assert.equal(await page.locator('[data-vehicle="'+id+'"]').getAttribute('aria-pressed'),'true');
+      const parked=await page.evaluate(id=>{
+        const car=garageWorld.car,s=TougeRivals.cars[id];
+        return car.wheels.length===4 && Math.abs(car.axles.rear-car.axles.front-s.wheelbase)<.001 &&
+          car.wheels.every((wheel,i)=>Math.abs(Math.abs(wheel.hub.position.x)*2-s.track[i>>1])<.001) &&
+          !car.driver.visible && car.body.getObjectByName('hatchGlass').material.map!==null;
+      },id);
+      assert(parked,id+' has its own measured chassis, garage interior and heated backlight');
+      await click('#car-back');await click('#start-btn');await state('racing');await ready(id);
+      await page.keyboard.down('KeyW');
+      await page.waitForFunction(id=>{
+        if(garageDrive.kmh<20)return false;
+        return ['idle','low','drive','high','coast','intake'].every(layer=>{
+          const buffer=garageAudio.buffers.get(id+'-'+layer);
+          return buffer && garageAudio.loops.get('engine-'+layer)?.source.buffer===buffer;
+        });
+      },id,{timeout:45000});
+      await page.keyboard.up('KeyW');
+      assert(await page.evaluate(([id,night])=>garageWorld.car.driver.visible &&
+        garageWorld.course.night===night && garageWorld.car.group.parent===garageWorld.rig &&
+        (!['fd3s','fc3s'].includes(id)||garageWorld.car.body.getObjectByName('Raised headlamps').visible===night),[id,stage==='uphill']));
+    }
+    await page.keyboard.press('Escape');await click('#to-menu');await page.reload();await state('menu');
+    assert.equal(await page.locator('body').getAttribute('data-car'),'bnr32');
+    assert.deepEqual(errors,[]);console.log('Six selectable cars, race/restart, records, WebGL recovery, four rival engine banks and day/night running equipment passed.');
   }finally{await browser.close();}
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

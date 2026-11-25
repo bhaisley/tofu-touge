@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#10191d">
-  <meta name="description" content="Drift the classic Toyota AE86 Trueno or the modern NEO86 through Haruna Pass and along Mikuni Pass overlooking Mount Fuji.">
+  <meta name="description" content="Drive six Japanese sports cars on Haruna and Mikuni, including the Takahashi RX-7s, Bunta’s Impreza and Nakazato’s GT-R.">
   <title>Tofu Touge — Japanese Mountain Passes</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='9' fill='%23f26743'/%3E%3Cpath d='m8 47 21-32 10 16 5-7 13 23H45L34 31l-4 6-2-4-9 14z' fill='%2310191d'/%3E%3C/svg%3E">
   <script>
@@ -15,7 +15,7 @@
       value => /^(fuji-)?(downhill|uphill)$/.test(value)
     ) || 'downhill';
   </script>
-  <link rel="stylesheet" href="style.css?v=0.6.0">
+  <link rel="stylesheet" href="style.css?v=0.7.0">
 </head>
 <body data-state="menu">
   <div id="viewport"><canvas id="world" aria-label="Haruna Pass driving view"></canvas></div>
@@ -72,6 +72,10 @@
       <div class="course-picker garage-picker" role="group" aria-label="Select your car">
         <button type="button" data-vehicle="neo86" aria-pressed="true">GR86 · NEO86</button>
         <button type="button" data-vehicle="ae86" aria-pressed="false">AE86 · Trueno</button>
+        <button type="button" data-vehicle="fd3s" aria-pressed="false">FD3S · RX-7</button>
+        <button type="button" data-vehicle="fc3s" aria-pressed="false">FC3S · Savanna</button>
+        <button type="button" data-vehicle="gc8" aria-pressed="false">GC8 · Impreza</button>
+        <button type="button" data-vehicle="bnr32" aria-pressed="false">R32 · GT-R</button>
       </div>
       <h2 id="garage-car">Toyota GR86 <small>NEO86</small></h2>
       <p id="garage-spec">Widebody conversion · Turbocharged · Rear-wheel drive</p>
@@ -109,19 +113,21 @@
   <noscript>Enable JavaScript to drive Tofu Touge.</noscript>
   <script defer src="vendor/three.min.js"></script>
   <script defer src="js/course.js"></script>
-  <script defer src="js/drive.js"></script>
-  <script defer src="js/pose.js?v=0.5.0"></script>
+  <script defer src="js/rivals.js?v=0.7.0"></script>
+  <script defer src="js/drive.js?v=0.7.0"></script>
+  <script defer src="js/pose.js?v=0.7.0"></script>
   <script defer src="js/neo-view.js"></script>
   <script defer src="js/radio.js?v=0.5.0"></script>
-  <script defer src="js/audio.js"></script>
+  <script defer src="js/audio.js?v=0.7.0"></script>
   <script defer src="js/run-events.js?v=0.6.0"></script>
-  <script defer src="js/run-visuals.js?v=0.6.0"></script>
-  <script defer src="js/game.js?v=0.6.0"></script>
+  <script defer src="js/run-visuals.js?v=0.7.0"></script>
+  <script defer src="js/game.js?v=0.7.0"></script>
   <script defer src="js/car.js"></script>
   <script defer src="js/neo-body.js"></script>
   <script defer src="js/neo-fascias.js"></script>
   <script defer src="js/neo-wheels.js"></script>
-  <script defer src="js/ae86.js?v=0.5.0"></script>
+  <script defer src="js/ae86.js?v=0.7.0"></script>
+  <script defer src="js/rival-models.js?v=0.7.0"></script>
   <script defer src="js/neo-occlusion.js"></script>
   <script defer src="js/grass.js?v=0.5.0"></script>
   <script defer src="js/forest.js?v=0.5.0"></script>
@@ -133,6 +139,6 @@
   <script defer src="js/rock-cuts.js"></script>
   <script defer src="js/drift-effects.js"></script>
   <script defer src="js/fuji.js?v=0.5.0"></script>
-  <script defer src="js/world.js?v=0.6.0"></script>
+  <script defer src="js/world.js?v=0.7.0"></script>
 </body>
 </html>

@@ -107,7 +107,8 @@ body[data-state="viewcar"] #viewport,#viewport.chase-orbit{cursor:grab}
 body[data-state="viewcar"] #viewport:active,#viewport.chase-orbit.orbiting{cursor:grabbing}
 #walkaround{position:fixed;inset:auto 0 0;display:flex;align-items:end;justify-content:space-between;gap:12px;padding:64px var(--edge) max(24px,env(safe-area-inset-bottom));pointer-events:none;background:linear-gradient(transparent,#0b1218b8)}
 .car-caption h2{margin:0;font:700 clamp(1.7rem,3.5vw,3rem)/1 Cond,Arial,sans-serif}
-.garage-picker{pointer-events:auto;margin-bottom:10px}
+.garage-picker{pointer-events:auto;margin-bottom:10px;max-width:100%;flex-wrap:wrap;justify-content:center}
+@media(max-width:680px){.garage-picker{display:grid;grid-template-columns:repeat(3,1fr)}.garage-picker button{padding-inline:8px}}
 .car-caption small{font:600 .4em var(--mono);color:#f4b18e;vertical-align:middle}
 .car-caption p{margin:7px 0 0;color:#dedfd8;font-size:.82rem}
 .car-caption #garage-spec{color:#ffcfad;font-family:var(--mono);font-size:.72rem}

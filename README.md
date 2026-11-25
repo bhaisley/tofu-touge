@@ -1,8 +1,25 @@
 # Tofu Touge
 
-A Three.js drift game on two Japanese mountain passes. Choose the 1983 Toyota Sprinter Trueno AE86 or the modern NEO86 widebody. Deliver tofu through the wet cedar forest of Haruna or along a ridge above Lake Yamanaka with Mount Fuji across the water. Each pass has an uphill and downhill run, and each car keeps its own records.
+A Three.js drift game on two Japanese mountain passes. Choose from six cars, from the 1983 Sprinter Trueno to a twin-turbo Skyline GT-R. Deliver tofu through the wet cedar forest of Haruna or along a ridge above Lake Yamanaka with Mount Fuji across the water. Each pass has an uphill and downhill run, and each car keeps its own records.
 
 **[Play in your browser](https://bhaisley.github.io/tofu-touge/)** · [Download the offline game](https://github.com/bhaisley/tofu-touge/releases/latest/download/Tofu-Touge.html) · [Watch the full downhill run](https://bhaisley.github.io/tofu-touge/docs/media/haruna-full-run.mp4)
+
+## Akina Rivals · v0.7.0
+
+![Four playable cars at Haruna, with the Takahashi brothers’ RX-7s above the Fujiwara Impreza and Nakazato Skyline](docs/media/akina-rivals.jpg)
+
+Four fan favorites join the garage. Netorabo voters tied the Takahashi brothers’ Mazdas for first place. Takumi’s Trueno was already playable, so the next two places went to Bunta’s two-door Subaru and Nakazato’s Skyline. [Original poll and vote counts](https://nlab.itmedia.co.jp/research/articles/2098470/5/)
+
+| Driver | Car | What to look and listen for |
+| --- | --- | --- |
+| Keisuke Takahashi | [Mazda RX-7 Type R · FD3S](https://bhaisley.github.io/tofu-touge/dist/?car=fd3s) | Yellow Akina bodywork, tall wing and a sharper rotary note as the second turbo comes in |
+| Ryosuke Takahashi | [Mazda Savanna RX-7 ∞ III · FC3S](https://bhaisley.github.io/tofu-touge/dist/?car=fc3s) | White liftback, low spoiler, offset plate and a single turbo that builds through the middle of the rev range |
+| Bunta Fujiwara | [Subaru Impreza WRX Type R STi Version V · GC8](https://bhaisley.github.io/tofu-touge/dist/?car=gc8) | Blue two-door, gold wheels, uneven boxer exhaust beat and a rear-biased center differential |
+| Takeshi Nakazato | [Nissan Skyline GT-R V-spec II · BNR32](https://bhaisley.github.io/tofu-touge/dist/?car=bnr32) | Black pearl, four round tail lamps and a twin-turbo straight-six that sends more drive forward as the rear tires slip |
+
+Hear each engine idle, accelerate through a shift and lift off at Haruna. The FD starts at 0 seconds, the FC at 7, the Subaru at 14 and the Skyline at 21. [Listen to the four in-game engines](https://bhaisley.github.io/tofu-touge/docs/media/akina-engines.m4a)
+
+Each car has its own running gear, dashboard cup position and personal-best ghost. All four can run Haruna and Mikuni in either direction. [Dimensions, character builds and handling results](docs/akina-rivals.md)
 
 ## Driving School · v0.6.0
 
@@ -72,7 +89,7 @@ The four Haruna gameplay frames in the second table come directly from v0.1.0. [
 
 Open the browser edition or download **Tofu-Touge.html** and open it in a browser with WebGL enabled. The single-file edition embeds the renderer, models, art, fonts, soundtrack, and effects for offline play. [Play online](https://bhaisley.github.io/tofu-touge/) · [Download the standalone game](https://github.com/bhaisley/tofu-touge/releases/latest/download/Tofu-Touge.html)
 
-Open **Garage** on the title screen and choose **AE86 · Trueno** or **GR86 · NEO86**. You can also switch cars with the arrow beside the garage tile. Your selection carries into the race and is remembered on your next visit. On Mikuni the car parks by Panorama-dai. Drag or use the arrow keys to orbit, and scroll, pinch, or press + / − to zoom. The right stick rotates the view on a standard gamepad. **Back** or Escape returns to the menu. [NEO86 rear and flat spoiler](playtest/neo86-kit-rear.jpg) · [Rear glass close-up](playtest/neo86-rear-glass.jpg) · [Walkaround photographs](playtest/neo86-walkaround.jpg)
+Open **Garage** on the title screen to inspect and choose any of the six cars. You can also switch cars with the arrow beside the garage tile. Your selection carries into the race and is remembered on your next visit. On Mikuni the car parks by Panorama-dai. Drag or use the arrow keys to orbit, and scroll, pinch, or press + / − to zoom. The right stick rotates the view on a standard gamepad. **Back** or Escape returns to the menu. [NEO86 rear and flat spoiler](playtest/neo86-kit-rear.jpg) · [Rear glass close-up](playtest/neo86-rear-glass.jpg) · [Walkaround photographs](playtest/neo86-walkaround.jpg)
 
 While driving in **Chase** or **Low Chase**, hold the left mouse button and drag to look around the car. Drag sideways for a full orbit and vertically to change the viewing angle. Release the button to ease back behind the car. You can keep steering, accelerating and drifting throughout.
 
@@ -116,21 +133,21 @@ The soundtrack was composed and rendered locally with YuE2. The radio crossfades
 | [Myojin Redline](dist/assets/music/myojin-redline.mp3) | Shamisen and taiko festival rock | 140 BPM |
 | [Hirano After Hours](dist/assets/music/hirano-after-hours.mp3) | Late-night Japanese jazz fusion | 102 BPM |
 
-Each car has six original SuperCollider engine recordings. The cars share tire, road and event sounds. On the turbocharged NEO86, pressure builds with sustained throttle and engine speed, up to 0.35 bar. Lifting or upshifting under boost vents the blow-off valve. A hot exhaust can pop on the throttle cut, with a brief flame at each outlet. Front-tire scrub, rear breakaway and handbrake lock have separate voices. The editable synthesis code is in `sound/sfx/`. [Artwork and material credits](art-direction.md)
+Each car has six original engine layers synthesized in SuperCollider. The cars share tire, road and event sounds. On the turbocharged NEO86, pressure builds with sustained throttle and engine speed, up to 0.35 bar. Lifting or upshifting under boost vents the blow-off valve. A hot exhaust can pop on the throttle cut, with a brief flame at each outlet. Front-tire scrub, rear breakaway and handbrake lock have separate voices. The editable synthesis code is in `sound/sfx/`. [Artwork and material credits](art-direction.md)
 
 The turbo whistle rises as boost builds, then settles under the engine at sustained throttle. Hear the same bonnet-view acceleration twice at matched engine and master levels. The original mix plays first and the revised mix begins at 8.6 seconds. [Hear the comparison](https://bhaisley.github.io/tofu-touge/playtest/turbo-bonnet-comparison.m4a)
 
-The engine uses original synthesized exhaust recordings at 960, 2,400, 3,600 and 6,600 RPM, with separate intake and closed-throttle sounds. All six follow the same four-cylinder firing cycle through shifts. The exterior exhaust was tuned against the parked and departing car in noplansco’s mountain run. The onboard section informed the fuller low mids in bonnet view. Passing a stone retaining wall adds one short reflection on that side of the road. [Parked and pulling away at 0:43](https://www.youtube.com/watch?v=sBC2tZZuXr0&t=43s) · [Onboard at 1:22](https://www.youtube.com/watch?v=sBC2tZZuXr0&t=82s) · [Exterior pass at 1:30](https://www.youtube.com/watch?v=sBC2tZZuXr0&t=90s)
+The NEO86 uses original synthesized exhaust recordings at 960, 2,400, 3,600 and 6,600 RPM, with separate intake and closed-throttle sounds. Its six layers follow the four-cylinder firing cycle through shifts. The exterior exhaust was tuned against the parked and departing car in noplansco’s mountain run. The onboard section informed the fuller low mids in bonnet view. Passing a stone retaining wall adds one short reflection on that side of the road. [Parked and pulling away at 0:43](https://www.youtube.com/watch?v=sBC2tZZuXr0&t=43s) · [Onboard at 1:22](https://www.youtube.com/watch?v=sBC2tZZuXr0&t=82s) · [Exterior pass at 1:30](https://www.youtube.com/watch?v=sBC2tZZuXr0&t=90s)
 
 ## Handling and chase cameras
 
 The title screen prepares the selected pass in short batches. You can change mountains, open the radio or read the controls while it loads. Switching directions reuses the road and its scenery. Changing mountains releases the previous graphics context. Before a countdown begins, the renderer prepares the shaders, textures and lights for that stage. During a run, shadows, wet asphalt and roadside mirrors use simpler geometry for details too small to resolve in those views. The main camera draws the selected car at full detail. On Mikuni, each camera culls mountainside tiles independently. The grass sprays appear in wet-road reflections, while the main view also draws the individual blades. The game loads the 4096 × 1024 horizon for the selected time of day when you first enter that run.
 
-The chassis runs at 120 Hz. The front and rear tires share their available grip between cornering and longitudinal force. Braking shifts load forward, power goes to the rear axle, and a short rear lock can initiate a drift. Both rear contact patches lay rubber in proportion to slip. Hot tires leave a smoke plume on drier asphalt and throw more spray across standing water. The cameras, wheels and tire trails share an interpolated pose.
+The chassis runs at 120 Hz. The front and rear tires share their available grip between cornering and longitudinal force. Braking shifts load forward. The Toyotas and Mazdas power the rear axle. The Subaru and Nissan also drive the front tires, with a different torque split for each car. A short rear lock can initiate a drift. Both rear contact patches lay rubber in proportion to slip. Hot tires leave a smoke plume on drier asphalt and throw more spray across standing water. The cameras, wheels and tire trails share an interpolated pose.
 
 Run `node tools/check-handling.cjs` to reproduce braking, throttle oversteer, a keyboard and an analog hairpin, a complete delivery, and a glancing barrier hit. Run `node tools/check-presentation.cjs` to check motion between physics ticks across several display rates and a recovery. Run `node sound/sfx/check-mix.cjs` to check tire levels, engine response, the camera perspectives and wall reflections.
 
-Run `node tools/check-activities.cjs` for a clean lesson attempt, a grip-only attempt, full water-cup deliveries with both cars and ghost interpolation across recovery. With Playwright and Chromium, `node tools/check-activities-ui.cjs` plays the full lesson, delivery and replay through the menus. It uses the offline edition by default and also accepts a served game URL.
+Run `node tools/check-activities.cjs` for a clean lesson attempt, a grip-only attempt, full water-cup deliveries with all six cars and ghost interpolation across recovery. With Playwright and Chromium, `node tools/check-activities-ui.cjs` plays the full lesson, delivery and replay through the menus. It uses the offline edition by default and also accepts a served game URL.
 
 For the first-time-driver playtest, open the hairpin lesson for each new driver and count the attempt on which **Clean drift** first appears. The target is four of five drivers within three attempts.
 
@@ -144,4 +161,4 @@ Run `node tools/check-backlight.cjs` to measure the glass, cage clearance and fl
 
 ## Production decisions
 
-This build has two selectable cars, two mountain passes, single-player delivery time attack, and accessible arcade handling. For a larger production, the decisions that change the work most are the minimum hardware and frame-rate target, intended controller or wheel support, handling reference, and number of passes, cars, rival drivers, and campaign events. A dimensioned scan or CAD model of the conversion would support a more exact exterior. Vehicle-specific recordings under load would support a future modern GR86 sound tune. Driver playtests on target hardware would help refine handling. Commercial planning should include the intended Toyota and Initial D branding permissions and review of the music model’s commercial terms.
+This build has six selectable cars, two mountain passes, single-player delivery time attack, and accessible arcade handling. For a larger production, the decisions that change the work most are the minimum hardware and frame-rate target, intended controller or wheel support, handling reference, and number of passes, cars, rival drivers, and campaign events. A dimensioned scan or CAD model of the conversion would support a more exact exterior. Vehicle-specific recordings under load would support a future modern GR86 sound tune. Driver playtests on target hardware would help refine handling. Commercial planning should include the intended Toyota and Initial D branding permissions and review of the music model’s commercial terms.

@@ -23,7 +23,9 @@
 
   // Vertex-coloured coachwork, glazing and wheels share one draw. The hatch
   // and the notchback have different roofs, axles and rear overhangs.
-  function ghostCar(classic) {
+  function ghostCar(vehicle) {
+    const classic=vehicle==='ae86', s=window.TougeRivals?.cars[vehicle];
+    const form=s?TougeRivalModels.shapes[vehicle]:null;
     const points = [], colors = [], tint = new T.Color();
     function face(a, b, c, d, hex) {
       tint.setHex(hex);
@@ -31,7 +33,7 @@
         points.push(...p); colors.push(tint.r, tint.g, tint.b);
       }
     }
-    const cuts = classic
+    const cuts = s ? form.cuts.map(([z,w,h])=>[z*s.length/2,w*s.width/2,h]) : classic
       ? [[-2.12,.71,.57],[-1.94,.79,.67],[-1.22,.815,.72],[-.72,.82,.81],[1.08,.81,.82],[1.87,.79,.77],[2.08,.74,.71]]
       : [[-2.13,.73,.53],[-1.90,.86,.62],[-1.30,.92,.72],[-.74,.89,.78],[1.28,.94,.82],[1.92,.91,.80],[2.16,.82,.75]];
     for (let i=1; i<cuts.length; i++) {
@@ -44,7 +46,8 @@
       }
     }
     for (const [z,w,h] of [cuts[0],cuts[cuts.length-1]]) face([-w,.25,z],[w,.25,z],[w,h,z],[-w,h,z],0x80ddda);
-    const glass = classic
+    const glass = s ? form.cabin.map((z,i)=>[z,s.width/2*form.rail[i],
+      i===1||i===2?s.height-.045:(i===0?cuts[4][2]:cuts[cuts.length-3][2])]) : classic
       ? [[-.74,.77,.81],[-.16,.65,1.31],[.67,.64,1.30],[1.63,.75,.81]]
       : [[-.79,.80,.76],[-.24,.65,1.24],[.44,.65,1.27],[1.40,.77,.81]];
     for (let i=1; i<glass.length; i++) {
@@ -55,7 +58,13 @@
         if(i!==2)face([wa*s,ha+.004,a],[wa*.90*s,ha+.004,a],[wb*.90*s,hb+.004,b],[wb*s,hb+.004,b],0x99dad6);
       }
     }
-    const rear=classic?2.085:2.165;
+    const rear=s?s.length/2:classic?2.085:2.165;
+    if(form){
+      const [where,height,width,chord,support]=form.wing,z=where*rear,y=height+(vehicle==='fd3s'?.10:0);
+      face([-width,y,z-chord/2],[width,y,z-chord/2],[width,y+.025,z+chord/2],[-width,y+.025,z+chord/2],0xb3fbef);
+      for(const k of [-1,1])face([k*support,cuts.at(-2)[2],z-.09],[k*support,cuts.at(-2)[2],z+.08],
+        [k*support,y,z+.08],[k*support,y,z-.09],0x87c8c6);
+    }
     const strip=(x1,x2,y1,y2,z,hex)=>face([x1,y1,z],[x2,y1,z],[x2,y2,z],[x1,y2,z],hex);
     strip(-.73,.73,.30,.42,rear+.004,0x254650);
     strip(-.69,.69,.47,.63,rear+.006,0x24505c);
@@ -64,9 +73,9 @@
       strip(.39*s,.68*s,.51,.615,rear+.011,0xb49191);
       strip(.52*s,.68*s,.581,.609,rear+.014,0xffc9a9);
     }
-    const radius=classic?.286:.31;
-    for (const axle of classic?[-1.22,1.18]:[-1.24,1.335]) for (const side of [-1,1]) {
-      const x=side*(classic?.825:.93);
+    const radius=s?s.wheel[0]:classic?.286:.31;
+    for (const axle of s?[s.frontZ,s.frontZ+s.wheelbase]:classic?[-1.22,1.18]:[-1.24,1.335]) for (const side of [-1,1]) {
+      const x=side*(s?(s.track[axle===s.frontZ?0:1]+s.wheel[1])/2:classic?.825:.93);
       const rim=(i,r,inset=0)=>[x-side*inset,radius+r*Math.cos(i*Math.PI/8),axle+r*Math.sin(i*Math.PI/8)];
       for (let i=0;i<16;i++){
         face(rim(i,radius),rim(i+1,radius),rim(i+1,radius,.19),rim(i,radius,.19),0x23444a);
@@ -79,7 +88,7 @@
     geometry.setAttribute('color',new T.Float32BufferAttribute(colors,3));
     const material = new T.MeshBasicMaterial({vertexColors:true,side:T.DoubleSide,transparent:true,opacity:.40,depthWrite:false,forceSinglePass:true});
     const mesh = new T.Mesh(geometry, material);
-    mesh.name = classic?'AE86 personal best':'NEO86 personal best'; mesh.visible=false;
+    mesh.name = (s?.trim || (classic?'AE86':'NEO86'))+' personal best'; mesh.visible=false;
     return mesh;
   }
 
@@ -106,7 +115,7 @@
       if(mode==='cup'){
         this.cup ||= dashboardCup();
         this.world.car.body.add(this.cup.group);
-        this.cup.group.position.set(.058,vehicle==='ae86'?.839:.757,vehicle==='ae86'?-.61:-.5);
+        this.cup.group.position.fromArray(this.world.car.mounts?.cup || [.058,vehicle==='ae86'?.839:.757,vehicle==='ae86'?-.61:-.5]);
       }
       if(this.cup)this.cup.group.visible=mode==='cup';
       if (mode==='hairpin' && !this.boards) {
@@ -118,7 +127,7 @@
       if (this.boards) this.boards.visible=mode==='hairpin';
       if (useGhost) {
         if (!this.ghosts[vehicle]) {
-          const mesh=ghostCar(vehicle==='ae86');
+          const mesh=ghostCar(vehicle);
           this.ghosts[vehicle]=mesh;this.world.scene.add(mesh);this.world.wetRoad.exclude(mesh);
         }
         this.ghost=this.ghosts[vehicle];

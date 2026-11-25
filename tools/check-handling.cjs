@@ -7,6 +7,7 @@ const dist = path.join(__dirname, '..', 'dist');
 global.window = globalThis;
 global.THREE = require(path.join(dist, 'vendor/three.min.js'));
 require(path.join(dist, 'js/course.js'));
+require(path.join(dist, 'js/rivals.js'));
 require(path.join(dist, 'js/drive.js'));
 
 const dt = 1 / 120;
@@ -39,7 +40,8 @@ function simulate(drive, input, seconds) {
 function straightBench(vehicle) {
   const drive = new TougeDrive(new Skidpad(), vehicle);
   while (drive.kmh < 100 && drive.time < 16) drive.step(dt, { throttle: 1 });
-  assert(drive.kmh >= 100 && drive.gear >= 3, 'the automatic gearbox must deliver a clean launch');
+  const secondAt100=(100/3.6)*60/(2*Math.PI*drive.rollingRadius)*drive.tune.ratios[1]*drive.tune.finalDrive;
+  assert(drive.kmh >= 100 && drive.gear >= (secondAt100>drive.tune.shiftRpm?3:2), 'the automatic gearbox must reach road speed without an early shift');
   const hundred = drive.time;
   const brakePoint = drive.z;
   let brakeG = 0;
@@ -193,7 +195,7 @@ function fullRoute(course, vehicle) {
     assert(drive.slip >= 0 && drive.slip <= 1 && drive.tireScrub >= 0 && drive.tireScrub <= 1);
   }
   assert(drive.finished && drive.progress === 1 && drive.integrity === 100);
-  assert(drive.splitTimes.length === 3 && shifts > 4 && maxSpeed > 90);
+  assert(drive.splitTimes.length === 3 && shifts >= (vehicle==='bnr32'?3:5) && maxSpeed > 90, [vehicle,course.mapId,course.direction,shifts,maxSpeed,drive.splitTimes]);
   return { seconds: rounded(drive.time), kilometres: rounded(course.distance / 1000),
     peakKmh: rounded(maxSpeed), shifts, splits: drive.splitTimes.map(t => rounded(t)), integrity: drive.integrity };
 }
@@ -263,8 +265,28 @@ if (require.main === module) {
   const wetStraight = straightBench(), truenoStraight = straightBench('ae86');
   assert(truenoStraight.zeroTo100Seconds > wetStraight.zeroTo100Seconds + 1.3);
   assert(truenoStraight.stopFrom100Metres > wetStraight.stopFrom100Metres);
+  const rivals={};
+  const hairpinEntries={fd3s:[17,2.55],fc3s:[17,2.55],gc8:[16.5,2.4],bnr32:[18,2.25]};
+  for(const [id,s] of Object.entries(TougeRivals.cars)){
+    const car=new TougeDrive(new Skidpad(),id);
+    let peakShare=0;
+    for(let i=0;i<6/dt;i++){
+      car.step(dt,{throttle:1});
+      peakShare=Math.max(peakShare,car.frontDriveShare);
+    }
+    assert.equal(car.vehicleId,id);assert.equal(car.tune.mass,s.curb+65);
+    assert(Math.abs(car.tune.wheelbase-s.wheelbase)<.001);
+    assert(s.drive==='rwd'?peakShare===0:peakShare>.25&&peakShare<=.5);
+    simulate(car,{},2);
+    if(s.drive==='attesa')assert(car.frontDriveShare<.025);
+    if(s.drive==='dccd')assert(Math.abs(car.frontDriveShare-.35)<.025);
+    const deliveries=[course,course.reversed(),mikuni,mikuni.reversed()].map(route=>fullRoute(route,id));
+    const [speed,hold]=hairpinEntries[id];
+    rivals[id]={acceleration:straightBench(id),peakFrontTorqueShare:rounded(peakShare),
+      hairpin:hairpinBench(course,false,{vehicle:id,speed,hold}),deliveries};
+  }
   console.log(JSON.stringify({
-    wetStraight,
+    rivals, wetStraight,
     truenoStraight,
     truenoHairpin: hairpinBench(course, false, {vehicle:'ae86', speed:16.5, hold:2.25}),
     truenoDeliveries: [course,course.reversed(),mikuni,mikuni.reversed()].map(route=>fullRoute(route,'ae86')),

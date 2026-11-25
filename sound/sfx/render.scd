@@ -7,7 +7,7 @@
 (
 var output = "TOFU_SFX_RAW".getenv;
 var options = ServerOptions.new.numOutputBusChannels_(1).numInputBusChannels_(0).sampleRate_(32000);
-var recipes, render;
+var recipes, render, makeRival, rivals;
 var makeEngine, engine, trueno, tires, air, shifter, lift, compressor, valve, afterfire, contact, bell;
 var localServer = Platform.resourceDir +/+ "scsynth";
 
@@ -169,6 +169,64 @@ SynthDef(if(stock) { \truenoEngine } { \tofuEngine }, { |firing=120, load=0.7, p
 }) };
 engine = makeEngine.value(false);
 trueno = makeEngine.value(true);
+
+// One render per induction/exhaust configuration. The common firing control
+// is twice shaft speed. A two-rotor emits two port events per shaft turn;
+// the flat four has four firings per 720 degrees and the RB26 has six.
+makeRival = { |name, type|
+    SynthDef(name, { |firing=120, load=0.8, part=0, seed=1|
+        var rotary = type < 2, six = type == 3;
+        var count = if(rotary, 2, if(six, 6, 4));
+        var clock = if(rotary, firing/2, firing/4);
+        var revs = ((firing-30)/195).clip(0,1), branches, pulses, edge, blowdown;
+        var pipes, muffler, casing, intake, gas, exhaust, coast, layer, merged;
+        var lengths = [
+            [0.00115,0.00158], [0.00132,0.00230],
+            [0.00135,0.00420,0.00150,0.00372],
+            [0.00145,0.00178,0.00151,0.00173,0.00148,0.00182]
+        ][type];
+        var strengths = [[1,0.94],[1,0.86],[1,0.82,0.92,0.81],[1,0.95,0.98,0.97,0.99,0.96]][type];
+        var resonator = [302,249,173,216][type], collector = [0.0031,0.0043,0.00615,0.0037][type];
+        RandSeed.ir(1,seed);
+        pulses = Array.fill(count,{ |i| Impulse.ar(clock,i/count) * strengths[i] });
+        edge = pulses.sum;
+        branches = pulses.collect { |p,i|
+            var tick = DelayC.ar(p,0.012,lengths[i]);
+            var flow = Decay2.ar(tick, if(rotary,0.00072,0.00027), if(rotary,0.0048,0.0039));
+            var heat = BPF.ar(PinkNoise.ar, 1150+(load*820)+(revs*490), 0.91);
+            (flow*(1+(heat*(0.46+(0.42*load))))) +
+                (Ringz.ar(tick,resonator*(1+(0.018*i)),0.009)*0.33)
+        };
+        blowdown = branches.sum;
+        pipes = blowdown - (DelayC.ar(blowdown,0.015,collector)*(0.65-(load*0.14)));
+        merged = if(rotary, {
+            // Broad peripheral-port exhaust followed by the turbine housing.
+            var second = if(type==0, revs.linlin(0.50,0.64,0,1).clip(0,1), 0);
+            (pipes * 0.76) + (BPF.ar(pipes,635+(revs*135),0.68)*1.7)
+            + (BPF.ar(pipes,1390+(550*second),0.66)*(0.64+(0.58*load)))
+            + (Ringz.ar(edge,if(type==0,2630,1960),0.0016)*revs*0.27)
+        }, {
+            // Separate turbine/manifold arrivals on the 1-5-3-6-2-4 six,
+            // or unequal-length left/right primaries on the Subaru.
+            var odd = branches.select { |v,i| i.odd }.sum;
+            var even = branches.select { |v,i| i.even }.sum;
+            var pair = even + DelayC.ar(odd,0.012,if(six,0.0005,0.0024));
+            (pipes*0.45) + pair + (BPF.ar(pair,if(six,820,358),0.68)*1.32)
+            + (BPF.ar(pair,if(six,1760,863),0.58)*(0.43+(load*0.45)))
+        });
+        muffler = merged + (LPF.ar(DelayC.ar(merged,0.022,collector*2.6),1450)*0.37);
+        casing = Ringz.ar(edge, [731,618,489,896][type],0.0031)*0.17;
+        gas = Decay2.ar(edge,0.0009,0.0058) * PinkNoise.ar;
+        intake = (BPF.ar(blowdown, [515,441,394,638][type],0.79)*3.5)
+            + (BPF.ar(gas,1300+(revs*810),0.85)*1.6)
+            + (BPF.ar(pipes,2180+(revs*1040),0.71)*1.1) + (casing*0.32);
+        exhaust = LPF.ar(muffler, 1720+(load*2750)+(revs*2100)) + casing*(1.08-(load*0.42));
+        coast = LPF.ar(muffler, 560+(revs*420))*0.50 + (intake*0.25) + (casing*0.76);
+        layer = Select.ar(part,[exhaust,coast,intake]);
+        Out.ar(0,LPF.ar(HPF.ar(layer,if(six,31,28)),10400)*0.18);
+    })
+};
+rivals = ["fd3s","fc3s","gc8","bnr32"];
 
 tires = SynthDef(\tofuTires, { |part=0, seed=64|
     var sand, shake, chatter, strain, grain, low, tearing, voiceA, voiceB, squeal;
@@ -338,6 +396,15 @@ recipes = recipes ++ recipes.select { |entry| entry[0].beginsWith("engine-") }.c
     [entry[0].replace("engine-", "trueno-"), entry[1], trueno, entry[3]]
 };
 
+rivals.do { |id, i|
+    var def = makeRival.value(id.asSymbol,i);
+    recipes = recipes ++ recipes.select { |entry| entry[0].beginsWith("engine-") }.collect { |entry|
+        [entry[0].replace("engine-", id ++ "-"), entry[1], def, entry[3]]
+    };
+};
+if("TOFU_SFX_RIVALS".getenv == "1") {
+    recipes = recipes.select { |entry| rivals.any { |id| entry[0].beginsWith(id ++ "-") } };
+};
 if("TOFU_SFX_ENGINE_ONLY".getenv == "1") {
     recipes = recipes.select { |entry|
         (entry[0].beginsWith("engine-")) or: { (entry[0] == "shift") or: { entry[0] == "overrun" } }

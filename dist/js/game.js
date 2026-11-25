@@ -46,7 +46,8 @@
   const settings=read(settingsKey),roads=new Map();
   const vehicles={
     neo86:{name:'Toyota GR86',trim:'NEO86',short:'GR86',spec:'Widebody conversion · Turbocharged · Rear-wheel drive'},
-    ae86:{name:'Toyota Sprinter Trueno',trim:'AE86',short:'Trueno',spec:'1983 GT-APEX · 1.6 L twin-cam · 5-speed'}
+    ae86:{name:'Toyota Sprinter Trueno',trim:'AE86',short:'Trueno',spec:'1983 GT-APEX · 1.6 L twin-cam · 5-speed'},
+    ...TougeRivals.cars
   };
   const linkedCar=new URLSearchParams(location.search).get('car');
   let vehicleId=[linkedCar,settings.car].find(id=>Object.prototype.hasOwnProperty.call(vehicles,id))||'neo86';
@@ -84,7 +85,8 @@
   const mapButtons=document.querySelectorAll('.pass-picker button');
   const stageButtons=document.querySelectorAll('.direction-picker button');
   const vehicleButtons=document.querySelectorAll('.garage-picker button');
-  const otherCar=()=>vehicleId==='neo86'?'ae86':'neo86';
+  const vehicleIds=Object.keys(vehicles);
+  const otherCar=(step=1)=>vehicleIds[(vehicleIds.indexOf(vehicleId)+step+vehicleIds.length)%vehicleIds.length];
   function showVehicle(){
     const car=vehicles[vehicleId],other=vehicles[otherCar()];
     document.body.dataset.car=vehicleId;
@@ -780,7 +782,7 @@
       }
       if(state==='menu'&&!dialog&&i===8){activities();continue;}
       if(dialog==='radio'){if(i===1||i===9)dismiss();else if(i===15)radio.select(radio.nextIndex);continue;}
-      if(!dialog && (state==='menu'||state==='viewcar') && (i===4||i===5)){selectVehicle(otherCar());continue;}
+      if(!dialog && (state==='menu'||state==='viewcar') && (i===4||i===5)){selectVehicle(otherCar(i===4?-1:1));continue;}
       if(state==='menu' && !dialog && i===3){enterPass(true);continue;}
       if(state==='menu'&&!dialog&&i>=12){
         const map=i<14?(i===12?'haruna':'fuji'):stages[stageId].map;
@@ -788,7 +790,7 @@
       }
       if(state==='viewcar'){
         if(i===1||i===9)leaveCar();
-        else if(i===14||i===15)selectVehicle(vehicleButtons[i-14].dataset.vehicle);
+        else if(i===14||i===15)selectVehicle(otherCar(i===14?-1:1));
         continue;
       }
       if(i===0 && state==='racing' && !dialog) handbrakeTap=true;
@@ -817,7 +819,7 @@
     if(state==='viewcar'){
       if(code==='Escape'){event.preventDefault();leaveCar();}
       else if(event.target.closest?.('.garage-picker') && (code==='ArrowLeft'||code==='ArrowRight')){
-        event.preventDefault();const btn=vehicleButtons[code==='ArrowLeft'?0:1];btn.click();btn.focus();
+        event.preventDefault();const btn=Array.from(vehicleButtons).find(button=>button.dataset.vehicle===otherCar(code==='ArrowLeft'?-1:1));btn.click();btn.focus();
       }
       else if(walkaround.key(code))event.preventDefault();
       return;
@@ -925,7 +927,7 @@
   function hud(){
     setText('clock',timeStr(drive.time));setText('speed',String(Math.round(drive.kmh)));setText('gear',drive.gear<0?'R':String(drive.gear));
     setText('rpm',fmt(Math.round(drive.rpm/50)*50)+' RPM');setText('total-score',fmt(drive.score)+' DRIFT PTS');
-    if(vehicleId!=='ae86')setText('boost',(drive.boost*.35).toFixed(2)+' BAR');
+    if(vehicleId!=='ae86')setText('boost',(drive.boost*(drive.tune.boostBar??.35)).toFixed(2)+' BAR');
     const sector=Math.min(2,drive.sector);setText('sector','S'+(sector+1)+' / '+course.sectors[sector].toUpperCase());
     if(attempt)setText('lesson-cue',hairpin.cue(attempt,drive));
     if(cup){setText('water-level',Math.floor(cup.water)+'%');drawTougeCup(byId('water-cup'),cup);}
@@ -934,7 +936,7 @@
     const progress=attempt?clamp((drive.furthest-hairpin.start)/(hairpin.exit-hairpin.start),0,1):drive.progress;
     byId('progress-fill').style.width=progress*100+'%';
     setText('remaining',attempt?Math.max(0,Math.round(hairpin.exit-drive.furthest))+' M TO EXIT':((1-drive.progress)*course.distance/1000).toFixed(2)+(course.direction<0?' KM TO SUMMIT':' KM TO DELIVERY'));
-    const maxTach=vehicleId==='ae86'?drive.redline:8000;
+    const maxTach=drive.redline;
     const threshold=Math.round(drive.rpm/maxTach*ticks.length);for(let i=0;i<ticks.length;i++)ticks[i].classList.toggle('lit',i<threshold);
     byId('chain').hidden=drive.chain<3||state==='result';
     if(!byId('chain').hidden){
@@ -966,7 +968,7 @@
       drive.handbrake=input.handbrake;
       // With the clutch disengaged on the grid, a short blip spins up
       // quickly, then returns to idle on flywheel inertia.
-      const freeRpm=vehicleId==='ae86'?drive.idleRpm+input.throttle*(drive.redline-drive.idleRpm):1020+input.throttle*5520;
+      const freeRpm=vehicleId!=='neo86'?drive.idleRpm+input.throttle*(drive.redline-drive.idleRpm):1020+input.throttle*5520;
       drive.rpm+=(freeRpm-drive.rpm)*(1-Math.exp(-dt*(freeRpm>drive.rpm?3.9:2.8)));
       drive.engineLoad+=(input.throttle*.49-drive.engineLoad)*(1-Math.exp(-dt*9));
       count-=dt;

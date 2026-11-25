@@ -7,6 +7,7 @@ const path = require('node:path');
 const dist = path.resolve(__dirname, '../../dist');
 global.window = globalThis;
 global.document = { currentScript: null };
+require(path.join(dist, 'js/rivals.js'));
 require(path.join(dist, 'js/audio.js'));
 
 // Exercise the game's actual control law. The meter uses the real shipped
@@ -218,5 +219,17 @@ for(const stem of ['idle','low','drive','high','coast','intake']){
 }
 car.setVehicle('neo86');assert.equal(car.rpm,1050);
 assert(runFor(car,8,1).some(e=>e.type==='blowoff'));
+for(const id of Object.keys(TougeRivals.cars)){
+  stockAudio.setVehicle(id);
+  for(const layer of ['idle','low','drive','high','coast','intake']){
+    const file=stockAudio.engineAsset('engine-'+layer),pcm=pcmSamples(file);
+    assert.equal(file,id+'-'+layer);
+    assert(pcmRms(file)>.19 && pcmRms(file)<.23);
+    assert(Math.abs(pcm[0]-pcm[pcm.length-1])<.08,file+' must loop without a click');
+  }
+  car.setVehicle(id);assert.equal(car.rpm,TougeRivals.cars[id].idle);
+  const pull=runFor(car,8,1);
+  assert(pull.some(e=>e.type==='shift')&&pull.some(e=>e.type==='blowoff')&&car.kmh>95);
+}
 console.log('Tire squeal per-channel RMS targets: turn-in ' + onset.toFixed(1) +
-  ' dBFS, held slide ' + sustained.toFixed(1) + ' dBFS. Both engine banks, turbo isolation, tire modes and faders passed.');
+  ' dBFS, held slide ' + sustained.toFixed(1) + ' dBFS. Six engine banks, turbo isolation, tire modes and faders passed.');
