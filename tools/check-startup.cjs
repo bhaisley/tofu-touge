@@ -32,7 +32,7 @@ async function check(){
     let releaseScripts;
     if(!local){
       const ready=new Promise(resolve=>{releaseScripts=resolve;});
-      await page.route('**/js/world.js',async route=>{await ready;await route.continue();},{times:1});
+      await page.route(url=>url.pathname.endsWith('/js/world.js'),async route=>{await ready;await route.continue();},{times:1});
     }
     await page.goto(local?pathToFileURL(path.resolve(target)).href:target,{waitUntil:local?'load':'commit'});
     const click=id=>page.locator(id).click();
@@ -96,6 +96,16 @@ async function check(){
     await lose();await page.waitForFunction(()=>startupCheck.context.isContextLost());
     await restore();await page.waitForFunction(()=>!startupCheck.context.isContextLost());
     assert.equal(await heading(),'Pass radio');await click('#radio-done');
+    await click('button[data-map="fuji"]');await click('button[data-stage="fuji-uphill"]');await click('#start-btn');
+    await state('countdown');await lose();
+    assert.equal(await heading(),'Restoring graphics');
+    await restore();await state('countdown');
+    assert.equal(await page.locator('body').getAttribute('data-stage'),'fuji-uphill');
+    // A second loss in the same start must return control to the driver.
+    await lose();await error();await restore();await page.waitForFunction(()=>document.querySelector('#veil').hidden);
+    await click('#start-btn');await state('countdown');await lose();await click('#cancel-restore');
+    await restore();await state('menu');assert(await page.locator('#veil').isHidden());
+    await click('button[data-map="haruna"]');
     await page.addInitScript(()=>{window.addEventListener('DOMContentLoaded',()=>{
       startupCheck.fail=true;startupCheck.hold=false;
     });});

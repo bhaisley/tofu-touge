@@ -289,3 +289,21 @@ noscript{position:fixed;inset:50% 10% auto;background:#121b20;padding:20px;z-ind
   .title-line+.title-line{margin:0 0 0 .14em}
   .speed-stripes{display:none}
 }
+.activity-card{display:block;width:100%;padding:15px 2px;text-align:left;background:transparent;border:0;border-bottom:1px solid var(--line);color:var(--ivory)}
+.activity-card strong{display:block;font:700 1.45rem/1.05 Cond,sans-serif}
+.activity-card i{float:right;color:var(--orange);font-style:normal}
+.activity-card span,.ghost-hint{display:block;font:.88rem/1.4 Barlow,sans-serif;color:#bdcbc8}
+.activity-card span{margin-top:5px}.activity-card:hover strong{color:#ffc0a1}
+.event-description{font:1.09rem/1.45 Barlow,sans-serif;color:#f1f1e7}
+.ghost-hint{margin:10px 0 0}
+.result-sector b{display:block;margin-top:3px;font:600 .72rem var(--mono);letter-spacing:0}
+.gain{color:#94e5bd}.loss{color:#ffc09b}
+#cup-unit{right:var(--edge);top:194px;display:flex;align-items:center;gap:2px;padding:3px 9px 3px 2px;background:linear-gradient(110deg,#101c23d9,#142029b0);border:1px solid #d2ded932}
+#water-cup{width:69px;height:auto}#cup-unit strong{display:block;font:700 1.4rem Cond,sans-serif}
+#lesson-unit{position:absolute;left:50%;bottom:max(30px,env(safe-area-inset-bottom));transform:translateX(-50%);max-width:420px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 6px 4px 12px;background:#101d25eb;border-left:3px solid var(--orange);font:600 1rem/1.2 Barlow,sans-serif}
+#retry-hairpin{pointer-events:auto;min-height:44px;padding:0 9px;white-space:nowrap;color:#ffd5b7;background:#273237;border:1px solid #67736e;font:700 .92rem Cond,sans-serif}
+@media(max-width:660px){.menu-buttons{gap:6px}.menu-buttons .secondary{padding-inline:11px}.menu-buttons .primary{padding-inline:13px}.menu-buttons .primary kbd{display:none}}
+@media(max-width:460px){.menu-buttons #controls-btn span:last-child{display:none}.menu-buttons #controls-btn{min-width:46px}.menu-record{font-size:.60rem;letter-spacing:.035em}}
+@media(max-width:800px),(max-height:560px){#lesson-unit{top:28%;bottom:auto;width:min(80%,380px);font-size:.88rem}#cup-unit{top:157px}#water-cup{width:55px}}
+@media(max-width:520px){#lesson-unit{top:29%}#cup-unit{top:150px}}
+@media(max-height:440px) and (orientation:landscape){#lesson-unit{top:56px;width:34%;font-size:.77rem;gap:3px}#cup-unit{top:126px;padding-block:0}#water-cup{width:43px}#cup-unit strong{font-size:1rem}}

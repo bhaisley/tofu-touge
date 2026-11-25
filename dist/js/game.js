@@ -16,6 +16,7 @@
   const actions=new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD','Space']);
   let world=null,state='menu',dialog='',resumeTo='racing',controlParent='menu',loading=null;
   let preparation=null,artReady=null,warmScheduled=false,contextLost=false;
+  let restartAfterRestore=false,startupRetryUsed=false;
   let loadChannel;
   const loadTurns=[];
   const viewport=byId('viewport');
@@ -31,7 +32,7 @@
     try {const data=JSON.parse(localStorage.getItem(key));return data && typeof data==='object' && !Array.isArray(data)?data:{};}
     catch {return {};}
   }
-  function write(key,value){try{localStorage.setItem(key,JSON.stringify(value));}catch{/* Private sessions can still play. */}}
+  function write(key,value){try{localStorage.setItem(key,JSON.stringify(value));return true;}catch{return false;}}
   const stages={
     downhill:{map:'haruna',name:'Haruna Pass',light:'Dawn',record:'tofu-touge-haruna-v1',
       objective:'Drift the hairpins of Haruna Pass.',destination:'Bring the tofu down intact.'},
@@ -63,6 +64,9 @@
   const renderPose=new TougeRenderPose(drive);
   const recordsKey=()=>stages[stageId].record+(vehicleId==='neo86'?'':'-'+vehicleId);
   let records=read(recordsKey());
+  const {hairpin,WaterCup,GhostTape,sectorTime,benchmark}=TougeEvents;
+  let activity='delivery',returnSelection=null,attempt=null,cup=null,tape=null,reference=null,profile=null;
+  let practiceCount=0;
   let sound=settings.sound!==false,music=settings.music!==false;
   const savedVolume=value=>Number.isFinite(value)?clamp(value,0,1):1;
   settings.soundVolume=savedVolume(settings.soundVolume);
@@ -92,10 +96,11 @@
     const next=byId('next-car');next.title='Switch to '+other.name+' '+other.trim;next.setAttribute('aria-label',next.title);
     byId('boost').hidden=vehicleId==='ae86';
   }
-  function selectVehicle(id){
+  function selectVehicle(id,persist=true){
     if((state!=='menu'&&state!=='viewcar') || dialog || id===vehicleId)return;
     clearEntry();vehicleId=id;drive.setVehicle(id);audio.setVehicle(id);renderPose.capture(drive);
-    records=read(recordsKey());settings.car=id;write(settingsKey,settings);
+    records=read(recordsKey());
+    if(persist){settings.car=id;write(settingsKey,settings);}
     showVehicle();showRecord();
     if(state==='viewcar'){
       parkCar();walkaround.pending=2;enterPass(true);
@@ -126,19 +131,25 @@
     byId('menu-drop').innerHTML=Math.round(elevation)+' <small>M</small>';
     showRecord();paintMap(byId('menu-map'));
   }
-  function selectStage(id){
+  function selectStage(id,persist=true){
     if(state!=='menu' || dialog || stageId===id)return;
     clearEntry();
     if(stages[id].map!==stages[stageId].map)retirePass();
     stageId=id;course=roadFor(id);drive.course=course;drive.reset();renderPose.capture(drive);
-    records=read(recordsKey());settings.stage=id;write(settingsKey,settings);
+    records=read(recordsKey());
+    if(persist){settings.stage=id;write(settingsKey,settings);}
     showCourse();schedulePass();
   }
   for(const button of mapButtons)button.addEventListener('click',()=>selectStage(stageFor(button.dataset.map,course.direction<0)));
   for(const button of stageButtons)button.addEventListener('click',()=>selectStage(button.dataset.stage));
   for(const button of vehicleButtons)button.addEventListener('click',()=>selectVehicle(button.dataset.vehicle));
   byId('next-car').addEventListener('click',()=>selectVehicle(otherCar()));
-  function showRecord(){const el=byId('menu-record');el.hidden=!Number.isFinite(records.time);if(!el.hidden)el.textContent='PERSONAL BEST  '+timeStr(records.time);}
+  function showRecord(){
+    const el=byId('menu-record'),parts=[];
+    if(Number.isFinite(records.time))parts.push('BEST  '+timeStr(records.time));
+    if(Number.isFinite(records.score))parts.push('BEST DRIFT  '+fmt(records.score)+' PTS');
+    el.hidden=!parts.length;el.textContent=parts.join('   ·   ');
+  }
   function paintMap(canvas,local=false) {
     const bounds=(local && hudMapBounds)||canvas.getBoundingClientRect();
     if(!bounds.width)return;
@@ -182,7 +193,10 @@
     viewport.classList.toggle('chase-orbit',canOrbit());
     byId('walkaround').hidden=next!=='viewcar';
     const labels={menu:'MAIN MENU',viewcar:'GARAGE',racing:course.direction<0?'UPHILL RUN':'DOWNHILL RUN',countdown:'START GRID',paused:'PAUSED',result:'RUN RESULT'};
-    setText('screen-label',labels[next]);
+    const special={hairpin:'HAIRPIN SCHOOL',cup:'WATER DELIVERY',benchmark:'MIKUNI BENCHMARK'};
+    setText('screen-label',next==='racing'&&special[activity]||labels[next]);
+    byId('cup-unit').hidden=activity!=='cup'||next==='menu'||next==='result';
+    byId('lesson-unit').hidden=activity!=='hairpin'||next!=='racing';
     refreshSound();
   }
   function clearInput(){
@@ -247,8 +261,16 @@
   }
   const bind=(id,fn)=>byId(id).addEventListener('click',fn);
   function menu(){
+    restartAfterRestore=false;
     clearEntry();
-    clearInput();audio.setActive(false);closeDialog(false);stateTo('menu');accumulator=0;
+    clearInput();audio.setActive(false);closeDialog(false);
+    world?.runVisuals?.configure('menu',vehicleId,false);
+    activity='delivery';attempt=cup=profile=tape=reference=null;practiceCount=0;
+    stateTo('menu');accumulator=0;
+    if(returnSelection){
+      const saved=returnSelection;returnSelection=null;
+      selectStage(saved.stage,false);selectVehicle(saved.car,false);
+    }
     byId('countdown').hidden=true;byId('chain').hidden=true;byId('toast').hidden=true;showRecord();paintMap(byId('menu-map'));
     byId('start-btn').focus({preventScroll:true});
     schedulePass();
@@ -357,7 +379,17 @@
         // A garage swap keeps the parked camera. Warm the driving grid once
         // the cover is back, before the next visible countdown.
         if(state!=='viewcar'){
-          pass.render(0,drive,false);
+          let warmDrive=drive;
+          if(loading && (activity==='hairpin'||activity==='benchmark')){
+            // place() gives this preview its own contact and motion fields.
+            // Keep the live driver untouched if the pending start is cancelled.
+            warmDrive=Object.create(drive);
+            if(activity==='hairpin')hairpin.startRun(warmDrive);else benchmark.place(warmDrive);
+          }
+          await pass.settleUploads(pause);
+          if(stage!==course || id!==vehicleId)continue;
+          pass.render(0,warmDrive,false);
+          await pass.settleUploads(pause);
           pass.reset();pass.preparedCourses.add(stage);
         }
       }
@@ -387,7 +419,47 @@
   function leaveCar(){menu();byId('view-car').focus({preventScroll:true});}
   bind('view-car',()=>enterPass(true));bind('car-back',leaveCar);
   bind('orbit-left',()=>walkaround.move(-Math.PI/6,0));bind('orbit-right',()=>walkaround.move(Math.PI/6,0));
-  function begin(){return enterPass(false);}
+  function begin(){startupRetryUsed=false;return enterPass(false);}
+  function startActivity(id){
+    closeDialog(false);
+    returnSelection={stage:stageId,car:vehicleId};
+    activity=id;
+    if(id==='hairpin'){selectStage('downhill',false);selectVehicle('ae86',false);}
+    else if(id==='benchmark'){selectStage('fuji-uphill',false);selectVehicle('neo86',false);}
+    begin();
+  }
+  function ghostSwitch(){
+    const enabled=settings.ghost===true;
+    return '<div class="settings-row"><span>Personal-best ghost</span><button class="toggle-setting" id="ghost-setting" aria-pressed="'+enabled+'">'+(enabled?'ON':'OFF')+'</button></div>';
+  }
+  function bindGhost(){
+    bind('ghost-setting',()=>{
+      settings.ghost=!settings.ghost;write(settingsKey,settings);
+      const button=byId('ghost-setting');button.setAttribute('aria-pressed',String(settings.ghost));button.textContent=settings.ghost?'ON':'OFF';
+      if(state==='paused' && activity==='delivery')world.runVisuals.configure(activity,vehicleId,settings.ghost&&!!reference);
+    });
+  }
+  function activities(){
+    openDialog('activities','<p class="dialog-kicker">TOFU TOUGE</p><h2 id="dialog-title">Activities</h2>'+
+      '<button class="activity-card" id="choose-lesson"><strong>Hairpin school <i>›</i></strong><span>Learn one left-hand drift in the Haruna AE86.</span></button>'+
+      '<button class="activity-card" id="choose-cup"><strong>Water-cup delivery <i>›</i></strong><span>Keep the cup steady on your selected route.</span></button>'+
+      ghostSwitch()+'<p class="ghost-hint">Race your fastest recorded delivery in this car and direction. A new time record saves its ghost.</p>');
+    bind('choose-lesson',()=>brief('hairpin'));bind('choose-cup',()=>brief('cup'));bindGhost();
+  }
+  function brief(id){
+    const coarse=matchMedia('(any-pointer:coarse)').matches;
+    const copy={
+      hairpin:['HARUNA / AE86 TRUENO','Hairpin school','You start in second gear, three seconds from a left hairpin. Bank a drift and reach the exit board with the tofu intact.',
+        'Brake at the orange board. Turn left, tap '+(coarse?'Drift':'the handbrake (Space or controller A)')+', then release it. Tap right to catch the rear and unwind the steering.','Drive the hairpin'],
+      cup:[stages[stageId].name.toUpperCase()+' / '+vehicles[vehicleId].trim,'Water-cup delivery','Deliver the tofu with at least 90% of the water still in the dashboard cup.',
+        'Brake before turning. Ease into throttle and steering so the water can settle.','Start delivery'],
+      benchmark:['MIKUNI ASCENT / BLUE HOUR','Mikuni benchmark','The NEO86 drives the same wet switchback four times with its headlights on. The first pass warms the renderer.',
+        'Keep the game in the foreground. The last three passes measure frame intervals during the slide and exit.','Run benchmark']
+    }[id];
+    openDialog('brief','<p class="dialog-kicker">'+copy[0]+'</p><h2 id="dialog-title">'+copy[1]+'</h2><p class="event-description">'+copy[2]+'</p><p class="dialog-tip">'+copy[3]+'</p>'+
+      '<div class="dialog-buttons"><button class="primary" id="activity-go">'+copy[4]+'</button><button class="secondary" id="activity-back">Back</button></div>');
+    bind('activity-go',()=>startActivity(id));bind('activity-back',id==='benchmark'?menu:activities);
+  }
   function parkCar(){
     const physical=course.physicalCourse;
     const station=course.mapId==='fuji'?course.physicalStation(physical.splits[0]-22):
@@ -399,12 +471,17 @@
   async function enterPass(inspect){
     if(loading?.inspect===inspect)return;
     closeDialog(false);
+    if(!inspect&&activity!=='delivery'&&state==='menu'){
+      openDialog('event-loading','<p class="dialog-kicker">'+stages[stageId].name.toUpperCase()+'</p><h2 id="dialog-title">Preparing pass</h2><div class="dialog-buttons"><button id="cancel-activity" class="secondary">Cancel</button></div>',false);
+      bind('cancel-activity',menu);
+    }
     const request={inspect};loading=request;clearInput();if(!inspect)unlockAudio();
     showEntry();
     preparation?.resume?.();
     try{
       await loadPass();
       if(loading!==request)return;
+      if(dialog==='event-loading')closeDialog(false);
       const alreadyParked=inspect && state==='viewcar';
       world.reset();if(!alreadyParked)drive.reset();accumulator=0;prevTime=0;
       if(inspect){
@@ -413,14 +490,28 @@
         walkaround.render(world,drive,1/60);stateTo('viewcar');
         if(!alreadyParked)byId('car-back').focus({preventScroll:true});return;
       }
-      renderPose.capture(drive);count=3.1;lastHud=0;toastTime=0;
+      const rolling=activity==='hairpin'||activity==='benchmark';
+      attempt=activity==='hairpin'?hairpin.startRun(drive):null;
+      if(attempt)practiceCount++;
+      cup=activity==='cup'?new WaterCup():null;
+      profile=activity==='benchmark'?{pass:0,frames:[],smokeFrames:0,start:0,skip:true}:null;
+      if(profile)benchmark.place(drive);
+      tape=activity==='delivery'?new GhostTape():null;
+      records=read(recordsKey());
+      reference=tape&&GhostTape.valid(records.ghost,records.time)?records.ghost:null;
+      tape?.record(drive);
+      if(!world.runVisuals)world.runVisuals=new TougeRunVisuals(world);
+      world.runVisuals.configure(activity,vehicleId,!!reference&&settings.ghost===true);
+      renderPose.capture(drive);count=rolling?-1:3.1;lastHud=0;toastTime=0;
       byId('toast').hidden=true;byId('chain').hidden=true;byId('countdown').hidden=false;setText('count-number','3');setText('count-label','START GRID');
-      world.render(1/60,drive,false);stateTo('countdown');audio.update(driveTelemetry());audio.setActive(true);hud();
+      byId('countdown').hidden=rolling;
+      world.render(1/60,drive,false);stateTo(rolling?'racing':'countdown');audio.update(driveTelemetry());audio.setActive(true);hud();
     }catch(error){if(loading===request){console.error('Unable to start Tofu Touge',error);showError();}}
     finally{if(loading===request)clearEntry();}
   }
   function resume(){
     if(state!=='paused')return;closeDialog(false);clearInput();unlockAudio();stateTo(resumeTo);audio.setActive(true);prevTime=0;
+    if(profile)profile.skip=true;
   }
   function camera(){
     if(!world)return;chaseOrbit.reset();const name=world.cycleCamera();toast(name+' camera');
@@ -428,8 +519,10 @@
     if(dialog==='pause')setText('camera-setting',name);
   }
   function recover(){
+    if(activity==='hairpin'){begin();return;}
+    if(activity==='benchmark'){begin();return;}
     if(resumeTo==='countdown'&&state==='paused'){resume();return;}
-    chaseOrbit.reset();drive.recover();renderPose.capture(drive);accumulator=0;world.cameraReady=false;if(state==='paused')resume();
+    chaseOrbit.reset();drive.recover();tape?.record(drive,true);cup?.settle();renderPose.capture(drive);accumulator=0;world.cameraReady=false;if(state==='paused')resume();
   }
   function setMusic(on){
     music=on;audio.setMusicEnabled(on);settings.music=on;write(settingsKey,settings);
@@ -518,10 +611,11 @@
     openDialog('pause','<p class="dialog-kicker">'+stages[stageId].name.toUpperCase()+'</p><h2 id="dialog-title">Run paused</h2>'+
       '<div class="settings-row"><span>Camera</span><button class="toggle-setting" id="camera-setting">'+cam+'</button></div>'+
       '<div class="settings-row"><button id="radio-setting" class="radio-setting" aria-haspopup="dialog"><span>Pass radio</span><strong>'+radio.track.title+' ›</strong></button><button id="music-setting" class="toggle-setting" aria-label="Music" aria-pressed="'+music+'">'+(music?'ON':'OFF')+'</button></div>'+volumeControls()+
-      '<div class="dialog-buttons"><button id="resume" class="primary">Resume run</button><button id="restart" class="secondary">Restart</button></div>'+
-      '<div class="pause-links"><button id="pause-controls" class="text-link">Controls</button><button id="recover" class="text-link">Recover (+3 s)</button><button id="to-menu" class="text-link">Main menu</button></div>');
+      (activity==='delivery'?ghostSwitch():'')+'<div class="dialog-buttons"><button id="resume" class="primary">Resume run</button><button id="restart" class="secondary">Restart</button></div>'+
+      '<div class="pause-links"><button id="pause-controls" class="text-link">Controls</button><button id="recover" class="text-link"'+(activity==='benchmark'?' hidden':'')+'>'+(activity==='hairpin'?'Retry hairpin':'Recover (+3 s)')+'</button><button id="to-menu" class="text-link">Main menu</button></div>');
     bind('resume',resume);bind('restart',begin);bind('pause-controls',()=>controls('pause'));bind('recover',recover);bind('to-menu',menu);bind('camera-setting',camera);
     bindVolumes();bind('radio-setting',openRadio);bind('music-setting',()=>setMusic(!music));
+    if(activity==='delivery')bindGhost();
   }
   function pause(){
     if(state!=='racing' && state!=='countdown')return;
@@ -531,11 +625,11 @@
     keyboard:[
       ['Accelerate',['W','↑']],['Brake / reverse',['S','↓']],['Steer',['A / D','← / →']],['Handbrake',['Space']],
       ['Change camera',['C']],['Look around in chase',['Left mouse + drag']],['Return to chase',['Release mouse']],
-      ['Next radio track',['N']],['Recover car (+3 s)',['R']],['Pause',['Esc','P']]
+      ['Next radio track',['N']],['Recover / retry hairpin',['R']],['Activities from title',['H']],['Pause',['Esc','P']]
     ],
     gamepad:[
       ['Accelerate',['RT / R2']],['Brake / reverse',['LT / L2']],['Steer',['Left stick']],['Handbrake',['A / Cross']],
-      ['Change camera',['Y / Triangle']],['Next radio track',['D-pad →']],['Recover car (+3 s)',['B / Circle']],['Pause',['Start / Options']]
+      ['Change camera',['Y / Triangle']],['Next radio track',['D-pad →']],['Recover / retry hairpin',['B / Circle']],['Activities from title',['View / Share']],['Pause',['Start / Options']]
     ],
     touch:[
       ['Accelerate',['Gas']],['Brake / reverse',['Brake']],['Steer',['◀','▶']],['Handbrake',['Drift']],
@@ -558,28 +652,96 @@
     }
     else if(dialog==='controls'&&controlParent==='pause')pauseMenu();
     else if(dialog==='pause')resume();
-    else if(dialog==='result'||dialog==='error')menu();
+    else if(dialog==='result'||dialog==='error'||dialog==='event-loading'||dialog==='restoring')menu();
     else closeDialog(true);
   }
   bind('start-btn',begin);bind('controls-btn',()=>controls('menu'));bind('pause-btn',pause);bind('dialog-close',dismiss);
+  bind('activities-btn',activities);bind('retry-hairpin',begin);
+  function signedSector(t){
+    if(Math.abs(t)<.005)return '±0.00 s';
+    return (t<0?'−':'+')+Math.abs(t).toFixed(2)+' s';
+  }
+  function sectorDelta(splits, baseline, i){
+    const elapsed=sectorTime(splits,i),best=sectorTime(baseline,i);
+    return best===null||elapsed===null?null:elapsed-best;
+  }
+  function finishScreen(){
+    audio.setActive(false);stateTo('result');clearInput();
+    byId('countdown').hidden=true;byId('chain').hidden=true;byId('toast').hidden=true;
+  }
+  function finishActivity(title,kicker,content,retry){
+    finishScreen();
+    openDialog('result','<p class="dialog-kicker">'+kicker+'</p><h2 id="dialog-title">'+title+'</h2>'+content+
+      '<div class="dialog-buttons"><button class="primary" id="again">'+retry+'</button><button class="secondary" id="done">Main menu</button></div>',false);
+    bind('again',begin);bind('done',menu);byId('again').focus({preventScroll:true});
+  }
+  function resultRow(label,value){
+    return '<div><dt>'+label+'</dt><dd>'+value+'</dd></div>';
+  }
+  function finishLesson(){
+    const result=hairpin.result(attempt,drive);
+    if(result.clean)audio.event('finish');
+    const entry=attempt.entrySpeed===null?'—':Math.round(attempt.entrySpeed)+' km/h';
+    finishActivity(result.clean?'Clean drift':'Try the hairpin again','HARUNA / ATTEMPT '+practiceCount,
+      '<dl class="result-list">'+resultRow('Entry speed',entry)+resultRow('Banked drift',fmt(drive.score)+' pts')+
+      resultRow('Tofu condition',drive.integrity+'%')+'</dl><p class="dialog-tip"><span class="tip-label">NEXT ATTEMPT</span>'+result.tip+'</p>','Retry hairpin');
+  }
+  function finishBenchmark(){
+    const b=benchmark.summarize(profile.frames),ms=t=>t.toFixed(1)+' ms';
+    finishActivity('Benchmark complete','MIKUNI ASCENT / BLUE HOUR',
+      '<dl class="result-list">'+resultRow('95th percentile',ms(b.p95))+resultRow('99th percentile',ms(b.p99))+
+      resultRow('Worst frame',ms(b.worst))+resultRow('Frames over 33.3 ms',b.slow+' / '+b.frames)+resultRow('Frames with tire plume',String(profile.smokeFrames))+
+      '</dl><p class="dialog-tip">'+innerWidth+' × '+innerHeight+' CSS pixels · '+window.devicePixelRatio+'× display · Three measured passes.</p>','Run again');
+  }
   function results(success){
-    audio.setActive(false);if(success)audio.event('finish');
-    stateTo('result');clearInput();byId('countdown').hidden=true;byId('chain').hidden=true;byId('toast').hidden=true;
+    if(activity==='hairpin'){finishLesson();return;}
+    if(activity==='cup'){
+      const passed=success&&cup.water>=90;
+      if(passed)audio.event('finish');
+      finishActivity(passed?'Water delivered':success?'Too much spilled':'Cargo lost','WATER-CUP DELIVERY / '+stages[stageId].name.toUpperCase(),
+        '<dl class="result-list">'+resultRow('Water delivered',Math.floor(cup.water)+'%')+resultRow('Required water','90%')+
+        resultRow('Run time',timeStr(drive.time))+resultRow('Tofu condition',drive.integrity+'%')+'</dl>','Try again');
+      return;
+    }
+    if(activity==='benchmark'){finishBenchmark();return;}
+    if(success)audio.event('finish');
+    finishScreen();
+    records=read(recordsKey());
+    const oldSplits=records.splits;
     const pb=success&&(!Number.isFinite(records.time)||drive.time<records.time);
-    if(success){if(pb)records.time=drive.time;records.score=Math.max(Number(records.score)||0,drive.score);write(recordsKey(),records);}
-    const splits=drive.splitTimes.map((t,i)=>'<span>S'+(i+1)+' '+timeStr(t-(drive.splitTimes[i-1]||0))+'</span>').join('');
+    const bestDrift=success&&drive.score>(Number(records.score)||0);
+    if(success){
+      if(pb){tape.record(drive,true);records.time=drive.time;records.splits=drive.splitTimes.slice();records.ghost=tape.rows;}
+      records.score=Math.max(Number(records.score)||0,drive.score);
+      if(!write(recordsKey(),records)&&pb){delete records.ghost;write(recordsKey(),records);}
+    }
+    const splits=drive.splitTimes.map((t,i)=>{
+      const delta=sectorDelta(drive.splitTimes,oldSplits,i);
+      const tone=Math.abs(delta)<.005?'':delta<0?'gain':'loss';
+      return '<span>S'+(i+1)+' '+timeStr(sectorTime(drive.splitTimes,i))+(delta===null?'':'<b class="'+tone+'">'+signedSector(delta)+'</b>')+'</span>';
+    }).join('');
     const resultCourse=stages[stageId].name.toUpperCase(),displayDistance=course.distance/1000;
     const resultTitle=success?(course.direction<0?'Summit delivery complete':'Tofu delivered'):'Cargo lost';
-    openDialog('result','<p class="dialog-kicker">'+resultCourse+' / '+(success?(pb?'PERSONAL BEST':'FINISH'):'DELIVERY FAILED')+'</p><h2 id="dialog-title">'+resultTitle+'</h2><p class="result-time">'+timeStr(drive.time)+'</p><dl class="result-list"><div><dt>Drift score</dt><dd>'+fmt(drive.score)+' pts</dd></div><div><dt>Tofu condition</dt><dd>'+drive.integrity+'%</dd></div><div><dt>'+(success?'Best time':'Distance covered')+'</dt><dd>'+(success?timeStr(records.time):(drive.progress*displayDistance).toFixed(2)+' km')+'</dd></div></dl><div class="result-sector">'+splits+'</div><div class="dialog-buttons"><button class="primary" id="again">Run again</button><button class="secondary" id="done">Main menu</button></div>',false);
+    const recordRows=resultRow('Drift score',fmt(drive.score)+' pts')+
+      (Number.isFinite(records.score)?resultRow(bestDrift?'New best drift':'Best drift',fmt(records.score)+' pts'):'')+
+      resultRow('Tofu condition',drive.integrity+'%')+
+      resultRow(success?'Best time':'Distance covered',success?timeStr(records.time):(drive.progress*displayDistance).toFixed(2)+' km');
+    openDialog('result','<p class="dialog-kicker">'+resultCourse+' / '+(success?(pb?'PERSONAL BEST':'FINISH'):'DELIVERY FAILED')+
+      '</p><h2 id="dialog-title">'+resultTitle+'</h2><p class="result-time">'+timeStr(drive.time)+'</p><dl class="result-list">'+recordRows+
+      '</dl><div class="result-sector">'+splits+'</div>'+(sectorTime(oldSplits,0)!==null?'<p class="ghost-hint">Sector differences are against your previous best-time delivery.</p>':'')+
+      '<div class="dialog-buttons"><button class="primary" id="again">Run again</button><button class="secondary" id="done">Main menu</button></div>',false);
     bind('again',begin);bind('done',menu);
   }
   function handleEvents(){
     for(const event of drive.events.splice(0)){
       switch(event.type){
         case 'bank':if(event.points>=5)toast('Drift banked  +'+fmt(event.points));break;
-        case 'impact':audio.event('impact');world.shake=.78;toast('Barrier contact  −'+event.damage+'% tofu');break;
+        case 'impact':cup?.impact(event.damage,drive.contact.offset);audio.event('impact');world.shake=.78;toast('Barrier contact  −'+event.damage+'% tofu');break;
         case 'recover':toast('Car recovered  +3.00 s');break;
-        case 'checkpoint':audio.event('checkpoint');toast('Sector '+event.sector+'  ·  '+timeStr(drive.time),2.2);break;
+        case 'checkpoint':{
+          const i=event.sector-1,delta=activity==='delivery'?sectorDelta(drive.splitTimes,records.splits,i):null;
+          audio.event('checkpoint');toast('Sector '+event.sector+'  ·  '+timeStr(sectorTime(drive.splitTimes,i))+(delta===null?'':'  ·  '+signedSector(delta)+' vs PB'),2.6);break;
+        }
         case 'shift':audio.event('shift');break;
         case 'blowoff':audio.event('blowoff',event.strength);break;
         case 'afterfire':audio.event('afterfire',event.strength);world.exhaustPop(event.strength);break;
@@ -603,9 +765,20 @@
   function gamepad(){
     let pad;try{pad=Array.from(navigator.getGamepads?.()||[]).find(p=>p?.connected&&p.mapping==='standard');}catch{return;}
     if(!pad){previousButtons.clear();return;}
-    for(const i of [0,1,3,4,5,9,12,13,14,15]){
+    for(const i of [0,1,3,4,5,8,9,12,13,14,15]){
       const held=!!pad.buttons[i]?.pressed,edge=held&&!previousButtons.get(i);previousButtons.set(i,held);
       if(!edge)continue;
+      if(['activities','brief','event-loading','result'].includes(dialog)){
+        const items=Array.from(byId('dialog-content').querySelectorAll('button:not([hidden])'));
+        const index=items.indexOf(document.activeElement);
+        if(i===1)dismiss();
+        else if(i===0)(items[index]||items[0])?.click();
+        else if(i===12||i===13){
+          const next=index<0?0:(index+(i===12?-1:1)+items.length)%items.length;items[next]?.focus();
+        }
+        continue;
+      }
+      if(state==='menu'&&!dialog&&i===8){activities();continue;}
       if(dialog==='radio'){if(i===1||i===9)dismiss();else if(i===15)radio.select(radio.nextIndex);continue;}
       if(!dialog && (state==='menu'||state==='viewcar') && (i===4||i===5)){selectVehicle(otherCar());continue;}
       if(state==='menu' && !dialog && i===3){enterPass(true);continue;}
@@ -619,7 +792,6 @@
         continue;
       }
       if(i===0 && state==='racing' && !dialog) handbrakeTap=true;
-      if(dialog==='result'&&i===0){begin();continue;}
       if((i===9 || (i===0&&state==='menu')) && !loading){
         if(dialog==='pause')resume();else if(!dialog&&state==='menu')begin();else if(!dialog)pause();
       }else if(state==='racing'&&!dialog){if(i===1)recover();if(i===3)camera();if(i===15)radio.select(radio.nextIndex);}
@@ -630,6 +802,7 @@
     if(event.altKey||event.metaKey||event.ctrlKey)return;
     const code=event.code;
     if(dialog){
+      if(dialog==='result'&&activity==='hairpin'&&code==='KeyR'&&!event.repeat){event.preventDefault();begin();return;}
       if(code==='Escape'){event.preventDefault();if(!event.repeat)dismiss();return;}
       if(code==='KeyP' && dialog==='pause'&&!event.repeat){event.preventDefault();resume();return;}
       if(code==='Tab'){
@@ -650,6 +823,7 @@
       return;
     }
     if(state==='menu'){
+      if(code==='KeyH'&&!event.repeat&&!loading){event.preventDefault();activities();return;}
       if(code==='Escape' && loading){event.preventDefault();clearEntry();return;}
       if(event.target.closest?.('.course-picker')&&(code==='ArrowLeft'||code==='ArrowRight')){
         event.preventDefault();const index=code==='ArrowLeft'?0:1;
@@ -694,6 +868,14 @@
     else {preparation?.resume?.();schedulePass();}
     if(dialog==='radio')audio.setMusicPreview(!document.hidden);
   });
+  window.addEventListener('pagehide',event=>{
+    // Safari may keep the outgoing document in its back/forward cache.
+    // A finished run or title needs no live GPU world while the next pass loads.
+    if(!event.persisted || state==='menu' || state==='result'){
+      clearEntry();retirePass();
+    }
+  });
+  window.addEventListener('pageshow',event=>{if(event.persisted)schedulePass();});
   window.addEventListener('resize',()=>{
     hudMapBounds=null;
     world?.resize();
@@ -701,12 +883,23 @@
   });
   viewport.addEventListener('webglcontextlost',event=>{
     const inPass=loading || state!=='menu';
+    // Restart a newly requested Mikuni run once if the driver resets on its
+    // first frames. Never rewind a player's delivery or retain partial samples.
+    const atStart=loading?.inspect===false || state==='countdown' ||
+      (activity==='benchmark' && state==='racing' && profile?.pass===0);
+    restartAfterRestore=!startupRetryUsed && atStart && course.mapId==='fuji';
     event.preventDefault();contextLost=true;preparation?.resume?.();preparation=null;
     world?.dispose();world=null;clearInput();clearEntry();
-    if(inPass)showError();
+    if(restartAfterRestore){
+      startupRetryUsed=true;audio.setActive(false);stateTo('menu');
+      openDialog('restoring','<p class="dialog-kicker">MIKUNI PASS</p><h2 id="dialog-title">Restoring graphics</h2><p class="dialog-tip">Your run will restart when the browser restores the view.</p><div class="dialog-buttons"><button id="cancel-restore" class="secondary">Main menu</button></div>',false);
+      bind('cancel-restore',menu);
+    }else if(inPass)showError();
   },true);
   viewport.addEventListener('webglcontextrestored',()=>{
-    contextLost=false;if(dialog==='error')menu();else schedulePass();
+    contextLost=false;
+    if(restartAfterRestore){restartAfterRestore=false;enterPass(false);}
+    else if(dialog==='error')menu();else schedulePass();
   },true);
   function driveTelemetry() {
     return {
@@ -734,8 +927,13 @@
     setText('rpm',fmt(Math.round(drive.rpm/50)*50)+' RPM');setText('total-score',fmt(drive.score)+' DRIFT PTS');
     if(vehicleId!=='ae86')setText('boost',(drive.boost*.35).toFixed(2)+' BAR');
     const sector=Math.min(2,drive.sector);setText('sector','S'+(sector+1)+' / '+course.sectors[sector].toUpperCase());
+    if(attempt)setText('lesson-cue',hairpin.cue(attempt,drive));
+    if(cup){setText('water-level',Math.floor(cup.water)+'%');drawTougeCup(byId('water-cup'),cup);}
+    if(profile)setText('sector',profile.pass===0?'BENCHMARK / WARM-UP':'BENCHMARK / PASS '+profile.pass+' OF 3');
     byId('condition').firstChild.nodeValue=String(drive.integrity);byId('cargo-meter').firstElementChild.style.width=drive.integrity+'%';
-    byId('progress-fill').style.width=drive.progress*100+'%';setText('remaining',((1-drive.progress)*course.distance/1000).toFixed(2)+(course.direction<0?' KM TO SUMMIT':' KM TO DELIVERY'));
+    const progress=attempt?clamp((drive.furthest-hairpin.start)/(hairpin.exit-hairpin.start),0,1):drive.progress;
+    byId('progress-fill').style.width=progress*100+'%';
+    setText('remaining',attempt?Math.max(0,Math.round(hairpin.exit-drive.furthest))+' M TO EXIT':((1-drive.progress)*course.distance/1000).toFixed(2)+(course.direction<0?' KM TO SUMMIT':' KM TO DELIVERY'));
     const maxTach=vehicleId==='ae86'?drive.redline:8000;
     const threshold=Math.round(drive.rpm/maxTach*ticks.length);for(let i=0;i<ticks.length;i++)ticks[i].classList.toggle('lit',i<threshold);
     byId('chain').hidden=drive.chain<3||state==='result';
@@ -760,7 +958,7 @@
       if(!dialog && !loading && world.vehicleId===vehicleId)walkaround.render(world,drive,Math.min(dt,.06),pad);
       return;
     }
-    if(!world||(state!=='racing'&&state!=='countdown'))return;
+    if(!world||loading||(state!=='racing'&&state!=='countdown'))return;
     const input=drivingInput(pad);
     if(state==='countdown'){
       drive.throttle=input.throttle;
@@ -775,7 +973,14 @@
       if(count>0){setText('count-number',String(Math.min(3,Math.ceil(count))));}
       else{renderPose.capture(drive);stateTo('racing');audio.event('go');setText('count-number','GO');setText('count-label',stages[stageId].name.toUpperCase());}
     }else{
-      if(raw>dt)drive.time+=raw-dt;
+      if(raw>dt&&!profile)drive.time+=raw-dt;
+      if(profile){
+        if(profile.pass>0 && !profile.skip){
+          profile.frames.push(raw*1000);
+          if(world.effects.smoke.mesh.visible)profile.smokeFrames++;
+        }
+        profile.skip=false;
+      }
       accumulator+=dt;
       const heldHandbrake=input.handbrake;
       while(accumulator+1e-9>=fixed&&!drive.finished){
@@ -783,8 +988,16 @@
         // A tap between display frames still reaches the rear brakes for one tick.
         input.handbrake=heldHandbrake || handbrakeTap;
         handbrakeTap=false;
-        drive.step(fixed,input);
+        drive.step(fixed,profile?benchmark.input(drive.time-profile.start):input);
         accumulator-=fixed;
+        if(cup)cup.step(fixed,drive.lateralG,drive.longitudinalG);
+        if(tape)tape.record(drive);
+        if(attempt&&hairpin.update(attempt,drive)){hud();finishLesson();return;}
+        if(profile&&drive.time-profile.start>=benchmark.duration){
+          if(++profile.pass>=benchmark.passes){finishBenchmark();return;}
+          profile.start=drive.time;profile.skip=true;drive.integrity=100;drive.chain=drive.chainTime=drive.score=drive.grace=0;
+          drive.cooldown=0;drive.events.length=0;benchmark.place(drive);world.reset();renderPose.capture(drive);
+        }
       }
       handleEvents();
       if(state==='result')return;
@@ -795,9 +1008,14 @@
     world.measureFrame(raw);
     const racing=state==='racing';
     const pose=racing?renderPose.sample(drive,accumulator/fixed):drive;
+    if(cup)world.runVisuals.updateCup(cup);
+    if(world.runVisuals?.ghost)world.runVisuals.update(racing&&reference?GhostTape.sample(reference,Math.max(0,drive.time-fixed+accumulator)):null,pose);
     world.render(dt,pose,racing,null,racing?chaseOrbit.sample(dt):null);
     if(now-lastHud>48){hud();lastHud=now;}
   }
+  const launch=new URLSearchParams(location.search);
+  if(launch.get('benchmark')==='mikuni')brief('benchmark');
+  else if(['hairpin','cup'].includes(launch.get('event')))brief(launch.get('event'));
   requestAnimationFrame(frame);
   requestAnimationFrame(()=>{
     requestAnimationFrame(schedulePass);

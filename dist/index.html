@@ -15,7 +15,7 @@
       value => /^(fuji-)?(downhill|uphill)$/.test(value)
     ) || 'downhill';
   </script>
-  <link rel="stylesheet" href="style.css?v=0.5.0">
+  <link rel="stylesheet" href="style.css?v=0.6.0">
 </head>
 <body data-state="menu">
   <div id="viewport"><canvas id="world" aria-label="Haruna Pass driving view"></canvas></div>
@@ -51,7 +51,8 @@
       <p class="objective"><span id="stage-objective">Drift the hairpins of Haruna Pass.</span><br><span id="stage-destination">Bring the tofu down intact.</span></p>
       <div class="menu-buttons">
         <button id="start-btn" class="primary"><span class="play-icon" aria-hidden="true"></span><span>Start descent</span><kbd>Enter</kbd></button>
-        <button id="controls-btn" class="secondary"><span class="keyboard-icon" aria-hidden="true"></span>Controls</button>
+        <button id="activities-btn" class="secondary" aria-haspopup="dialog">Activities</button>
+        <button id="controls-btn" class="secondary" aria-label="Controls" title="Controls"><span class="keyboard-icon" aria-hidden="true"></span><span>Controls</span></button>
       </div>
       <p id="menu-record" class="menu-record" hidden></p>
     </div>
@@ -86,6 +87,8 @@
   <section id="hud" aria-label="Driving instruments" hidden>
     <div class="timing instrument"><span class="meta">RUN TIME</span><strong id="clock">00:00.00</strong><div class="timing-sector"><i></i><span id="sector">S1 / CEDAR RIDGE</span></div></div>
     <div class="cargo instrument"><span class="meta">TOFU CONDITION</span><strong id="condition">100<small>%</small></strong><span id="cargo-meter"><i></i></span><span id="total-score">0 DRIFT PTS</span></div>
+    <div id="cup-unit" class="instrument" hidden><canvas id="water-cup" width="128" height="110" aria-hidden="true"></canvas><div><span class="meta">WATER</span><strong id="water-level">100%</strong></div></div>
+    <div id="lesson-unit" hidden><span id="lesson-cue" role="status"></span><button type="button" id="retry-hairpin" aria-label="Retry hairpin">Retry ↺</button></div>
     <div id="map-unit" class="instrument"><div class="map-heading"><span id="hud-course" class="meta">HARUNA PASS</span><span lang="ja">榛名山</span></div><canvas id="hud-map" width="280" height="154" aria-label="Route and car position"></canvas><div class="route-progress"><i id="progress-fill"></i></div><span id="remaining">— KM TO DELIVERY</span></div>
     <div class="speed-unit instrument"><div class="speed-numbers"><div class="gear-group"><span class="meta">GEAR</span><b id="gear">1</b></div><strong id="speed">0</strong><span class="speed-unit-label">KM/H</span></div><div id="tach" aria-hidden="true"></div><div class="rpm-row"><span id="rpm">1,050 RPM</span><span id="boost" aria-label="Turbo boost">0.00 BAR</span></div></div>
     <div id="chain" class="chain" hidden><span class="meta">DRIFT CHAIN <span id="slip-angle"></span></span><strong id="chain-points">0</strong><span id="multiplier">×1.0</span></div>
@@ -111,7 +114,9 @@
   <script defer src="js/neo-view.js"></script>
   <script defer src="js/radio.js?v=0.5.0"></script>
   <script defer src="js/audio.js"></script>
-  <script defer src="js/game.js?v=0.5.0"></script>
+  <script defer src="js/run-events.js?v=0.6.0"></script>
+  <script defer src="js/run-visuals.js?v=0.6.0"></script>
+  <script defer src="js/game.js?v=0.6.0"></script>
   <script defer src="js/car.js"></script>
   <script defer src="js/neo-body.js"></script>
   <script defer src="js/neo-fascias.js"></script>
@@ -128,6 +133,6 @@
   <script defer src="js/rock-cuts.js"></script>
   <script defer src="js/drift-effects.js"></script>
   <script defer src="js/fuji.js?v=0.5.0"></script>
-  <script defer src="js/world.js?v=0.5.0"></script>
+  <script defer src="js/world.js?v=0.6.0"></script>
 </body>
 </html>

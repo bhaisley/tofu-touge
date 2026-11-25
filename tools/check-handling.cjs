@@ -247,6 +247,8 @@ function checkReverse(course) {
   }
 }
 
+module.exports = {followLine, hairpinInput};
+
 if (require.main === module) {
   const course = new TougeCourse(), mikuni = new TougeCourse('fuji');
   checkReverse(course);

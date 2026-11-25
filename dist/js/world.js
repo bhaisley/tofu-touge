@@ -423,9 +423,10 @@
       if(course.mapId==='fuji')this.camera.layers.enable(TougeGrass.fineDetailLayer);
       this.cameraMode=0;this.viewHeading=0;this.look=new T.Vector3();this.targetPos=new T.Vector3();
       this.reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      this.touchMikuni=course.mapId==='fuji' && window.matchMedia('(any-pointer: coarse)').matches;
       this.sky=TougeLighting.makeSky(this.scene,this.renderer,course);
       this.sky.userData.setNight(activeCourse.night);
-      this.sun=TougeLighting.makeSun(this.scene,innerWidth<760?1024:2048,course.mapId==='fuji');
+      this.sun=TougeLighting.makeSun(this.scene,innerWidth<760||this.touchMikuni?1024:2048,course.mapId==='fuji');
       yield;
       const groundAt=landHeight(course),forestFloor=yield* addTerrain(this.scene,course,groundAt,this.sky);
       yield;
@@ -462,7 +463,10 @@
       this.spray=new TougeTireSpray(this.scene,this.wetRoad);
       this.wetRoad.exclude(this.effects.trails.mesh);
       this.shake=0;this.elapsed=0;this.cameraReady=false;
-      this.scale=window.devicePixelRatio||1;this.slowTime=0;this.fastTime=0;
+      // Allocate the first tablet drawing buffer at CSS resolution. The
+      // frame-budget controller can raise it after a sustained fast stretch.
+      this.scale=this.touchMikuni?Math.min(1,window.devicePixelRatio||1):window.devicePixelRatio||1;
+      this.slowTime=0;this.fastTime=0;
       this.resize();
       this.setCourse(activeCourse);
     }
@@ -580,6 +584,19 @@
         if(performance.now()-start>=6){await pause();start=performance.now();}
       }
     }
+    async settleUploads(pause){
+      if(!this.touchMikuni || !this.renderer.capabilities.isWebGL2)return;
+      const gl=this.renderer.getContext();
+      const fence=gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE,0);
+      if(!fence)return;
+      gl.flush();
+      const deadline=performance.now()+800;
+      try{
+        while(performance.now()<deadline && !gl.isContextLost() && gl.clientWaitSync(fence,0,0)===gl.TIMEOUT_EXPIRED){
+          await new Promise(resolve=>setTimeout(resolve,12));await pause();
+        }
+      }finally{if(!gl.isContextLost())gl.deleteSync(fence);}
+    }
     setCourse(course){
       if(this.course===course)return;
       this.course=course;
@@ -613,7 +630,7 @@
     }
     resize(){
       const w=window.innerWidth,h=window.innerHeight;this.camera.aspect=w/h;this.camera.updateProjectionMatrix();
-      this.maxScale=Math.min(window.devicePixelRatio||1,w<760?1.45:1.75);
+      this.maxScale=Math.min(window.devicePixelRatio||1,w<760||this.touchMikuni?1.45:1.75);
       this.scale=Math.min(this.scale,this.maxScale);
       this.renderer.setPixelRatio(this.scale);this.renderer.setSize(w,h,false);
     }
@@ -843,10 +860,14 @@
       // between wind updates; the live headlamp cones and contact shadow
       // remain attached to the car. Camera jumps and wheel lock update now.
       const eye=this.camera.position;
-      const newShadow=viewCut || this.elapsed-this.shadowTime>=.14 ||
-        (c.x-this.shadowX)**2+(c.z-this.shadowZ)**2>.045**2 ||
+      const shadowAge=this.elapsed-this.shadowTime;
+      const shadowMoved=(c.x-this.shadowX)**2+(c.z-this.shadowZ)**2>.045**2 ||
         Math.abs(c.heading-this.shadowHeading)>.009 || Math.abs((c.steerAngle||0)-this.shadowSteer)>.055 ||
         (eye.x-this.shadowEyeX)**2+(eye.z-this.shadowEyeZ)**2>3**2;
+      // At blue hour the sun casts a soft secondary shadow. The headlight
+      // beams and contact patch still follow the chassis on every frame.
+      const minShadowInterval=this.touchMikuni && this.course.night ? .060 : 0;
+      const newShadow=viewCut || shadowAge>=.14 || (shadowMoved && shadowAge>=minShadowInterval);
       if(newShadow){
         TougeLighting.trackSun(this.sun,c.x,this.rig.position.y,c.z,c.contact.fx,c.contact.fz);
         this.shadowTime=this.elapsed;this.shadowX=c.x;this.shadowZ=c.z;this.shadowHeading=c.heading;

@@ -4,6 +4,20 @@ A Three.js drift game on two Japanese mountain passes. Choose the 1983 Toyota Sp
 
 **[Play in your browser](https://bhaisley.github.io/tofu-touge/)** · [Download the offline game](https://github.com/bhaisley/tofu-touge/releases/latest/download/Tofu-Touge.html) · [Watch the full downhill run](https://bhaisley.github.io/tofu-touge/docs/media/haruna-full-run.mp4)
 
+## Driving School · v0.6.0
+
+![The Trueno sliding through Cedar Ridge with the countersteering cue in the chase view](docs/media/haruna-driving-school.jpg)
+
+**Hairpin school** puts you in a rolling AE86 a few seconds before a left-hand bend at Haruna. Use the brake and turn-in boards, catch the slide, then straighten the car to bank the points. The exit report shows your entry speed, banked score and one tip for your next attempt. Retry immediately with R, controller B or the on-screen button. [Drive the hairpin](https://bhaisley.github.io/tofu-touge/dist/?event=hairpin)
+
+**Water-cup delivery** challenges you to finish with at least 90% of the water. The dashboard cup shows braking, cornering and abrupt changes of direction. A gauge beside the cargo display lets you see the surface and remaining water from every camera. Open **Activities** to try it on either pass, in either direction, with your selected car. [Start a water-cup delivery](https://bhaisley.github.io/tofu-touge/dist/?event=cup)
+
+Regular deliveries save your fastest time and highest drift score separately for each car and direction. Sector splits show where you gained or lost time against your fastest run. Switch on **Personal-best ghost** in Activities or the pause menu to follow that run on the road. Existing records carry over. Your next time record adds the replay and sector comparison data.
+
+**Mikuni benchmark** drives the NEO86 through the same blue-hour switchback four times with headlights, road reflections and tire effects. After one warm-up, the game reports frame intervals for the three timed passes, including the 95th percentile, 99th percentile and worst frame. Open it on the device you want to measure and keep Safari or your browser in the foreground. [Run the device benchmark](https://bhaisley.github.io/tofu-touge/dist/?benchmark=mikuni)
+
+On a physical fourth-generation iPad Air in Safari, two fresh starts of v0.6.0 measured 45 ms and 34 ms at the 95th percentile. Their worst frames were 55 ms and 39 ms. Safari reset WebGL during the second warm-up. The game restarted the run automatically before collecting the three measured passes. Cold preparation took about 17 seconds on this device.
+
 ## Sprinter Trueno AE86
 
 ![The playable white-and-black Trueno showing its hatchback, panda paint and retractable headlamps](docs/media/ae86-trueno.jpg)
@@ -115,6 +129,10 @@ The title screen prepares the selected pass in short batches. You can change mou
 The chassis runs at 120 Hz. The front and rear tires share their available grip between cornering and longitudinal force. Braking shifts load forward, power goes to the rear axle, and a short rear lock can initiate a drift. Both rear contact patches lay rubber in proportion to slip. Hot tires leave a smoke plume on drier asphalt and throw more spray across standing water. The cameras, wheels and tire trails share an interpolated pose.
 
 Run `node tools/check-handling.cjs` to reproduce braking, throttle oversteer, a keyboard and an analog hairpin, a complete delivery, and a glancing barrier hit. Run `node tools/check-presentation.cjs` to check motion between physics ticks across several display rates and a recovery. Run `node sound/sfx/check-mix.cjs` to check tire levels, engine response, the camera perspectives and wall reflections.
+
+Run `node tools/check-activities.cjs` for a clean lesson attempt, a grip-only attempt, full water-cup deliveries with both cars and ghost interpolation across recovery. With Playwright and Chromium, `node tools/check-activities-ui.cjs` plays the full lesson, delivery and replay through the menus. It uses the offline edition by default and also accepts a served game URL.
+
+For the first-time-driver playtest, open the hairpin lesson for each new driver and count the attempt on which **Clean drift** first appears. The target is four of five drivers within three attempts.
 
 Run `node tools/check-chase-orbit.cjs` to check mouse capture, release and camera clearance during a slide in either direction of the pass.
 
