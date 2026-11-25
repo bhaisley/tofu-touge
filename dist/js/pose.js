@@ -37,6 +37,7 @@
       frame.travel = mixDirection(p.travel, drive.travel, t);
       frame.kmh = Math.abs(frame.speed) * 3.6;
       frame.handbrake = drive.handbrake;
+      frame.gear = drive.gear;
       frame.rollingRadius = drive.rollingRadius;
       frame.placementId = drive.placementId;
 

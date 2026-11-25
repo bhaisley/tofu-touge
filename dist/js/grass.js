@@ -159,5 +159,5 @@
     do {result=steps.next();} while(!result.done);
     return result.value;
   }
-  window.TougeGrass={habitat,coverAt,surfaceMaps,surfaceShader,scatter,scatterSteps};
+  window.TougeGrass={habitat,coverAt,surfaceMaps,surfaceShader,scatter,scatterSteps,fineDetailLayer:1};
 })();

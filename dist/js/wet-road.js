@@ -489,6 +489,7 @@
       mirror.up.setFromMatrixColumn(camera.matrixWorld,1).reflect(normal);
       mirror.lookAt(this.position.copy(mirror.position).add(this.forward));
       mirror.layers.mask = camera.layers.mask;
+      mirror.layers.disable(TougeGrass.fineDetailLayer);
       mirror.near = camera.near;
       mirror.far = camera.far;
       mirror.updateMatrixWorld();

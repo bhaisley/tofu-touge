@@ -432,7 +432,9 @@
       map: treesMap, alphaTest: .52, side: T.DoubleSide}), 'portrait-depth', eye, lod, light, alternate);
     const matrix = new T.Matrix4(), tint = new T.Color();
     const cellSize = 57, bins = new Map(), pockets = [];
-    const farCell = 112, stands = new Map();
+    // The open lake views span several kilometres. Batch their distant
+    // two-triangle tree portraits in larger stands to reduce submissions.
+    const farCell = fuji ? 196 : 112, stands = new Map();
     for (const tree of all) {
       const x = Math.floor(tree.x/farCell), z = Math.floor(tree.z/farCell), key = x + ',' + z;
       let stand = stands.get(key);
@@ -491,6 +493,10 @@
       mesh.receiveShadow = true;
       mesh.customDepthMaterial = depthMaterial;
       mesh.count = 0;
+      mesh.boundingSphere=new T.Sphere();
+      mesh.userData.roots=shared?shared.userData.roots:{
+        bounds:new T.Box3(),width:0,height:0,shear:0
+      };
       group.add(mesh);
       pockets.push({mesh,shared});
       return mesh;
@@ -505,12 +511,21 @@
       const cosine=Math.cos(item.turn)*item.w, sine=Math.sin(item.turn)*item.w;
       const riseX=item.slopeX===undefined ? 0 : cosine*item.slopeX-sine*item.slopeZ;
       const riseZ=item.slopeX===undefined ? 0 : sine*item.slopeX+cosine*item.slopeZ;
+      const shear=Math.hypot(riseX,riseZ);
+      for(const set of [meshes,innerMeshes])if(set)for(const mesh of set){
+        const roots=mesh.userData.roots;
+        roots.width=Math.max(roots.width,item.w);roots.height=Math.max(roots.height,item.h);
+        roots.shear=Math.max(roots.shear,shear);
+      }
       list.push({x:item.x,y:item.y,z:item.z,height:item.h,cosine,sine,riseX,riseZ,
         red:item.shade*item.warm,green:item.shade,blue:item.shade*(1.97-item.warm),
         meshes,range:(radius+margin)**2,innerMeshes,innerRange:(innerRadius+margin)**2});
     }
+    const rootPoint=new T.Vector3();
     function fillInstances(plant, meshes) {
+      rootPoint.set(plant.x,plant.y,plant.z);
       for(const mesh of meshes) {
+        mesh.userData.roots.bounds.expandByPoint(rootPoint);
         const index=mesh.count++, a=mesh.instanceMatrix.array, m=index*16;
         // InstancedMesh initializes its homogeneous rows to identity. Only
         // these ten elements change when a plant enters the streamed window.
@@ -578,6 +593,9 @@
     const base=cutout(grassAtlas,'grass',bladeRange);base.alphaTest=.22;base.userData.wind=wind;
     const closeBlades=pocket(bladeTuft(),blades,null,'Folded verge grass blades',yield* visibleCapacity(grasses.slice(0,2),bladeRange.y));
     closeBlades.castShadow=false;
+    // The main camera resolves individual blades. The underlying tuft sprays
+    // carry the same silhouettes and colour into small reflection targets.
+    if(fuji)closeBlades.layers.set(TougeGrass.fineDetailLayer);
     for(let k=0;k<grasses.length;k++) {
       if(!grasses[k].length)continue;
       const tall=k>1,end=(tall?72:42)*(mobile?.78:1),range=new T.Vector2(end*.56,end);
@@ -588,13 +606,26 @@
       if(k<2){
         const crown=pocket(grassShape(k,true),base,null,grassNames[k]+' thatch',yield* visibleCapacity([grasses[k]],bladeRange.y));
         crown.castShadow=false;nearMeshes.push(crown);
+        if(fuji)crown.layers.set(TougeGrass.fineDetailLayer);
       }
       for(let i=0;i<grasses[k].length;i++){
         if ((i & 511) === 0) yield;
         bin(grasses[k][i],farMeshes,end,k<2 ? nearMeshes : null,bladeRange.y);
       }
     }
-    const previous = new T.Vector2(Infinity, Infinity);
+    // Capture each prototype's largest possible overhang once. Streaming
+    // already visits every root; a second pass over the instance matrices
+    // used to rebuild all these spheres at the same roadside interval.
+    for(const pocket of pockets){
+      const {mesh}=pocket,roots=mesh.userData.roots;
+      mesh.geometry.computeBoundingBox();
+      const {min,max}=mesh.geometry.boundingBox;
+      const radius=Math.hypot(Math.max(-min.x,max.x),Math.max(-min.z,max.z))+.05;
+      const reach=roots.width*radius,slope=roots.shear*radius;
+      pocket.lower=new T.Vector3(-reach,Math.min(0,min.y)*roots.height-slope,-reach);
+      pocket.upper=new T.Vector3(reach,Math.max(0,max.y)*roots.height+slope,reach);
+    }
+    const bounds=new T.Box3(),previous = new T.Vector2(Infinity, Infinity);
     const extent = thicketLod.y + margin;
     function update(view) {
       eye.copy(view);
@@ -608,7 +639,10 @@
         stand.mesh.castShadow = distance < (mobile ? 76*76 : 91*91);
         stand.mesh.geometry = distance < (lod.y+margin)**2 ? stand.curved : stand.flat;
       }
-      for (const {mesh} of pockets) mesh.count = 0;
+      for (const {mesh,shared} of pockets){
+        mesh.count=0;
+        if(!shared)mesh.userData.roots.bounds.makeEmpty();
+      }
       const x0 = Math.floor((view.x-extent)/cellSize), x1 = Math.floor((view.x+extent)/cellSize);
       const z0 = Math.floor((view.z-extent)/cellSize), z1 = Math.floor((view.z+extent)/cellSize);
       for (let ix=x0; ix<=x1; ix++) {
@@ -625,7 +659,7 @@
           }
         }
       }
-      for (const {mesh,shared} of pockets) {
+      for (const {mesh,shared,lower,upper} of pockets) {
         if (shared) mesh.count=shared.count;
         mesh.visible = mesh.count > 0;
         if (!mesh.visible) continue;
@@ -637,7 +671,9 @@
           mesh.instanceMatrix.needsUpdate = true;
           mesh.instanceColor.needsUpdate = true;
         }
-        mesh.computeBoundingSphere();
+        bounds.copy(mesh.userData.roots.bounds);
+        bounds.min.add(lower);bounds.max.add(upper);
+        bounds.getBoundingSphere(mesh.boundingSphere);
       }
     }
     group.userData.update = update;
@@ -808,12 +844,10 @@
     group.add(shade);
   }
 
-  function* shadeForestFloor(scene, trees) {
-    const ground = scene.getObjectByName('Cedar forest floor');
-    if (!ground) return;
-    const positions = ground.geometry.getAttribute('position');
-    const colors = ground.geometry.getAttribute('color');
-    const grass=ground.geometry.getAttribute('grassCover');
+  function* shadeForestFloor(ground, trees) {
+    const positions = ground.getAttribute('position');
+    const colors = ground.getAttribute('color');
+    const grass=ground.getAttribute('grassCover');
     if (!colors) return;
     const cell = 20, coverage = new Map();
     // Add a stand's canopies only to the ground cells that they cover.
@@ -1018,7 +1052,7 @@
     }
 
     yield* plantColonies(trees, small, course, drawnHeight, inClearing);
-    yield* shadeForestFloor(scene, trees);
+    yield* shadeForestFloor(forestFloor.geometry, trees);
     if(forestFloor.fill){
       const {position,grassCover}=forestFloor.fill.attributes;
       for(let i=0;i<position.count;i++){

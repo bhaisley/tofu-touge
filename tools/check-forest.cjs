@@ -32,6 +32,7 @@ function collect(group,course) {
   const stands=all.filter(mesh=>mesh.geometry.hasAttribute('treeCell'));
   const near=all.filter(mesh=>!mesh.geometry.hasAttribute('treeCell'));
   const cards=new Set(),grass=new Set();
+  const transform=new T.Matrix4(),point=new T.Vector3();
   for(const trunk of near.filter(mesh=>mesh.name.endsWith(' trunks'))) {
     const name=trunk.name.replace(' trunks',' needles and leaves');
     if(!near.some(mesh=>mesh.name===name && mesh.instanceMatrix===trunk.instanceMatrix &&
@@ -56,6 +57,14 @@ function collect(group,course) {
       if(count>instanceMatrix.count || count>instanceColor.count) throw Error('Overflow in '+mesh.name);
       if(!count)continue;
       if(!Number.isFinite(mesh.boundingSphere.radius)) throw Error('Invalid bounds for '+mesh.name);
+      const box=mesh.geometry.boundingBox;
+      for(const instance of [0,Math.floor(count/2),count-1]){
+        mesh.getMatrixAt(instance,transform);
+        for(const x of [box.min.x,box.max.x])for(const y of [box.min.y,box.max.y])for(const z of [box.min.z,box.max.z]){
+          point.set(x,y,z).applyMatrix4(transform);
+          assert(mesh.boundingSphere.distanceToPoint(point)<.002,'Culled instance of '+mesh.name);
+        }
+      }
       if(/grass|sedge|susuki/i.test(mesh.name))grass.add(mesh.name);
       for(const attribute of [instanceMatrix,instanceColor]) {
         const array=attribute.array;
@@ -81,6 +90,18 @@ for(const [mountain,mobile] of [['haruna',false],['haruna',true],['fuji',false],
   const steps=world.build(null,course);
   while(!world.forest) assert(!steps.next().done,'World construction skipped the forest');
   steps.return();
+  if(mountain==='fuji'){
+    const tiles=world.scene.children.filter(mesh=>mesh.name==='Mikuni mountainside');
+    const index=tiles[0].geometry.index,positions=tiles[0].geometry.attributes.position;
+    const point=new T.Vector3();
+    let offset=0;
+    for(const {geometry:g} of tiles){
+      assert(g.index===index && g.attributes.position===positions && g.drawRange.start===offset);
+      const end=offset+g.drawRange.count;
+      for(;offset<end;offset++)assert(g.boundingBox.containsPoint(point.fromBufferAttribute(positions,index.getX(offset))));
+    }
+    assert(tiles.length>1 && offset===index.count,'All mountain triangles must belong to one tile');
+  }
   const report=collect(world.forest,course);
   assert.deepEqual(report.uphill,report.downhill,'A return trip must restore every transform, color and LOD');
   assert(report.stands>1 && report.standAttributes===report.stands,'Each stand must retain its own tree variants');

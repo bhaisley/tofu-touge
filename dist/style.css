@@ -193,7 +193,8 @@ body[data-state="viewcar"] #viewport:active,#viewport.chase-orbit.orbiting{curso
 .volume-row input:focus-visible{outline:2px solid #ffcd8d;outline-offset:3px}
 .volume-row output{text-align:right;color:#ffbd99;font:600 .79rem var(--mono);font-variant-numeric:tabular-nums}
 #boost{color:#ffc499;font-variant-numeric:tabular-nums}
-#radio-list{border-top:1px solid var(--line)}
+#radio-list{border-top:1px solid var(--line);max-height:clamp(9rem,calc(100dvh - 375px),31rem);overflow-y:auto;scrollbar-color:#697774 #182328}
+@media(max-height:510px){#radio-list{max-height:none;overflow:visible}}
 .radio-track{display:grid;grid-template-columns:17px 1fr auto;align-items:center;gap:10px;width:100%;min-height:54px;padding:9px 10px;text-align:left;background:transparent;border:0;border-bottom:1px solid #d4dfd627}
 .radio-track:hover{background:#ffffff0c}
 .radio-track[aria-pressed="true"]{background:#e4a08014;box-shadow:inset 2px 0 var(--orange)}

@@ -27,7 +27,8 @@ async function check(){
     const row=i=>page.locator('#radio-list button').nth(i);
     await page.locator('#radio-btn').click();
     const buttons=page.locator('#radio-list button');
-    const expected=['Night Delivery','Cedar Afterglow','Rain on the Engawa','Daybreak Signal','Kōri no Hibana'];
+    const expected=['Night Delivery','Cedar Afterglow','Rain on the Engawa','Daybreak Signal','Kōri no Hibana',
+      'Glass Lake Express','Lanterns on Yamanaka','Myojin Redline','Hirano After Hours'];
     assert.deepEqual(await buttons.locator('.track-title').allTextContents(),expected);
     const last=expected.length-1;
     const titles=[],fingerprints=new Set();
@@ -76,6 +77,13 @@ async function check(){
     assert.equal(await page.locator('#resume').count(),1);
     assert.equal(await page.evaluate(()=>testAudio.radio.voice),null);
     await page.reload();await page.locator('#radio-btn').click();await settle(last);
+    for(const viewport of [{width:390,height:844},{width:844,height:390}]){
+      await page.setViewportSize(viewport);
+      await row(0).click();await row(last).click();await settle(last);
+      assert.equal(await row(last).getAttribute('aria-pressed'),'true');
+      assert(await page.locator('#dialog').evaluate(el=>el.scrollWidth<=el.clientWidth));
+      await page.locator('#radio-done').click();await page.locator('#radio-btn').click();
+    }
     assert(!errors.length && !network.length,JSON.stringify({errors,network}));
     console.log('Audible stereo tracks: '+titles.join(', ')+'. Verified natural wrap, rapid skips, both pause paths and saved selection.');
   }finally{await browser.close();}

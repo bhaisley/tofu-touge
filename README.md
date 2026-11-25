@@ -8,7 +8,7 @@ A Three.js drift game on two Japanese mountain passes. Choose the 1983 Toyota Sp
 
 ![The playable white-and-black Trueno showing its hatchback, panda paint and retractable headlamps](docs/media/ae86-trueno.jpg)
 
-The garage’s second car is the Japanese-market 1983 GT APEX three-door. Its 4.205 m body sits on a 2.400 m wheelbase. The panda paint, eight-spoke wheels and Fujiwara Tofu Shop lettering recall the delivery car from *Initial D*. The headlamps retract for daylight and rise on the night runs. [Drive the AE86 at Haruna](https://bhaisley.github.io/tofu-touge/dist/?stage=downhill&car=ae86) · [Toyota’s vehicle specifications](https://www.toyota-global.com/company/history_of_toyota/75years/vehicle_lineage/car/id60009032/index.html)
+The garage’s second car is the Japanese-market 1983 GT APEX three-door. Its 4.205 m body sits on a 2.400 m wheelbase. The panda paint, eight-spoke wheels and Fujiwara Tofu Shop lettering recall the delivery car from *Initial D*. The headlamps retract for daylight and rise on the night runs. The hatch glass follows the liftback into a raised rubber seal. The rear lamp clusters illuminate independently for braking and reverse. [Drive the AE86 at Haruna](https://bhaisley.github.io/tofu-touge/dist/?stage=downhill&car=ae86) · [Toyota’s vehicle specifications](https://www.toyota-global.com/company/history_of_toyota/75years/vehicle_lineage/car/id60009032/index.html)
 
 The naturally aspirated 1,587 cc 4A-GEU sends power to the rear axle through five forward ratios. Its intake opens up as revs rise. This 17-second recording from the game mixer takes it from idle through acceleration, two shifts and a throttle lift. [Hear the Trueno](https://bhaisley.github.io/tofu-touge/playtest/trueno-engine.m4a) · [Toyota’s 1983 engine description](https://global.toyota/en/detail/7739043)
 
@@ -62,7 +62,7 @@ Open **Garage** on the title screen and choose **AE86 · Trueno** or **GR86 · N
 
 While driving in **Chase** or **Low Chase**, hold the left mouse button and drag to look around the car. Drag sideways for a full orbit and vertically to change the viewing angle. Release the button to ease back behind the car. You can keep steering, accelerating and drifting throughout.
 
-Open **Radio** to audition any track and select the music for your run. The five songs play in sequence. Press **N** or **D-pad right** to skip while driving. Opening the radio mid-run pauses the car and keeps the music playing. **Radio** and **Pause** both have separate **Sound effects** and **Music** sliders. The game remembers your levels, selected course and song between visits.
+Open **Radio** to audition any track and select the music for your run. The nine songs play in sequence. Press **N** or **D-pad right** to skip while driving. Opening the radio mid-run pauses the car and keeps the music playing. **Radio** and **Pause** both have separate **Sound effects** and **Music** sliders. The game remembers your levels, selected course and song between visits.
 
 Watch the GR86 drift through a Haruna hairpin with **Kōri no Hibana** on the radio. The seven-second chase-camera recording includes the engine, tire screech and music as mixed by the game. [Watch the hairpin](playtest/haruna-hairpin.mp4) · [Hear the engine in isolation](playtest/ae86-engine-run.m4a)
 
@@ -88,7 +88,7 @@ The white NEO86 show car guided the short deck, flat upper blade, hooked tail la
 
 The modeled rear glass measures about 1.21 m at its widest. The straight line from the center of the roof edge to the center of the sill is 0.75 m long and drops 0.19 m. The target outline comes from photographs. Toyota’s stock rear track supplied the scale for the straight-rear view, and a high rear-quarter view located the glass relative to the wheels. The lower edge bows toward the trunk and its corners meet the painted pillars. The cage diagonal clears the back of the driver’s headrest by 74 mm. The game’s widened wheel tracks measure 1.756 m front and 1.798 m rear. With the wheels straight, the sidewalls sit about 11 mm inside the front flare crowns and 13 mm inside the rear crowns. [Toyota Japan catalog, rear-quarter view](https://toyota.jp/pages/contents/request/webcatalog/86/gr86_main.pdf#page=6) · [Rear glass comparison](playtest/neo86-rear-glass.jpg) · [Wheel detail](playtest/haruna-detail-update.jpg)
 
-The soundtrack was composed and rendered locally with YuE2. The radio crossfades on the Web Audio clock and keeps the current song and the next song decoded. All five tracks are included in the offline HTML. [Night Delivery production notes](sound/music/night-delivery.md) · [New tracks, scores and lyrics](sound/music/haruna-radio.md)
+The soundtrack was composed and rendered locally with YuE2. The radio crossfades on the Web Audio clock and keeps the current song and the next song decoded. All nine tracks are included in the offline HTML. [Night Delivery production notes](sound/music/night-delivery.md) · [Haruna scores and lyrics](sound/music/haruna-radio.md) · [Mikuni scores and lyrics](sound/music/mikuni-radio.md)
 
 | Track | Style | Tempo |
 | --- | --- | --- |
@@ -97,6 +97,10 @@ The soundtrack was composed and rendered locally with YuE2. The radio crossfades
 | [Rain on the Engawa](dist/assets/music/rain-on-the-engawa.mp3) | Electric-piano lo-fi hip-hop | 76 BPM |
 | [Daybreak Signal](dist/assets/music/daybreak-signal.mp3) | Guitar-led J-pop with an original Japanese chorus | 143 BPM |
 | [Kōri no Hibana](dist/assets/music/kori-no-hibana.mp3) | Japanese kawaii metal with a sung refrain and double-kick drums | 180 BPM |
+| [Glass Lake Express](dist/assets/music/glass-lake-express.mp3) | Japanese city pop with an original sung chorus | 119 BPM |
+| [Lanterns on Yamanaka](dist/assets/music/lanterns-on-yamanaka.mp3) | Koto drum and bass | 170 BPM |
+| [Myojin Redline](dist/assets/music/myojin-redline.mp3) | Shamisen and taiko festival rock | 140 BPM |
+| [Hirano After Hours](dist/assets/music/hirano-after-hours.mp3) | Late-night Japanese jazz fusion | 102 BPM |
 
 Each car has six original SuperCollider engine recordings. The cars share tire, road and event sounds. On the turbocharged NEO86, pressure builds with sustained throttle and engine speed, up to 0.35 bar. Lifting or upshifting under boost vents the blow-off valve. A hot exhaust can pop on the throttle cut, with a brief flame at each outlet. Front-tire scrub, rear breakaway and handbrake lock have separate voices. The editable synthesis code is in `sound/sfx/`. [Artwork and material credits](art-direction.md)
 
@@ -106,7 +110,7 @@ The engine uses original synthesized exhaust recordings at 960, 2,400, 3,600 and
 
 ## Handling and chase cameras
 
-The title screen prepares the selected pass in short batches. You can change mountains, open the radio or read the controls while it loads. Switching directions reuses the road and its scenery. Changing mountains releases the previous graphics context. Before a countdown begins, the renderer prepares the shaders, textures and lights for that stage. During a run, shadows, wet asphalt and roadside mirrors use simpler geometry for details too small to resolve in those views. The main camera draws the selected car at full detail.
+The title screen prepares the selected pass in short batches. You can change mountains, open the radio or read the controls while it loads. Switching directions reuses the road and its scenery. Changing mountains releases the previous graphics context. Before a countdown begins, the renderer prepares the shaders, textures and lights for that stage. During a run, shadows, wet asphalt and roadside mirrors use simpler geometry for details too small to resolve in those views. The main camera draws the selected car at full detail. On Mikuni, each camera culls mountainside tiles independently. The grass sprays appear in wet-road reflections, while the main view also draws the individual blades. The game loads the 4096 × 1024 horizon for the selected time of day when you first enter that run.
 
 The chassis runs at 120 Hz. The front and rear tires share their available grip between cornering and longitudinal force. Braking shifts load forward, power goes to the rear axle, and a short rear lock can initiate a drift. Both rear contact patches lay rubber in proportion to slip. Hot tires leave a smoke plume on drier asphalt and throw more spray across standing water. The cameras, wheels and tire trails share an interpolated pose.
 
@@ -116,7 +120,7 @@ Run `node tools/check-chase-orbit.cjs` to check mouse capture, release and camer
 
 Run `node tools/check-forest.cjs` to verify vegetation placement and visibility on both passes. With Playwright and Chromium, `node tools/check-startup.cjs` exercises both starts, cancellation and recovery after WebGL context loss. Pass it the served game URL to also check the menu with a delayed graphics download.
 
-With Playwright and Chromium installed, `node tools/check-radio.cjs` exercises the offline song picker, measures audible output from all five tracks, and checks crossfades, rapid skips, pause and resume, and the saved selection. `node tools/check-touch.cjs` drives both stages and checks phone layouts, simultaneous touches, legacy records and the independent volume controls. Set `CHROME_BIN` to use an existing Chromium installation.
+With Playwright and Chromium installed, `node tools/check-radio.cjs` exercises the offline song picker, measures audible output from all nine tracks, and checks crossfades, rapid skips, pause and resume, and the saved selection. `node tools/check-touch.cjs` drives both stages and checks phone layouts, simultaneous touches, legacy records and the independent volume controls. Set `CHROME_BIN` to use an existing Chromium installation.
 
 Run `node tools/check-backlight.cjs` to measure the glass, cage clearance and flat spoiler, trace the two-tone finish behind both wheels, verify the plate mounting and check all three brake lights in both chase cameras. Run `node tools/check-passes.cjs` to check both Mikuni starts, the Hirano ridge at two zoom levels, moving reflections on Lake Yamanaka, and map switching. Add `--webgl1` to exercise the older renderer. Run `node tools/check-garage.cjs` to exercise car selection, persistence, restarting a run and graphics-context recovery.
 

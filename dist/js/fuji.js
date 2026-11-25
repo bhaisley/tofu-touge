@@ -118,14 +118,9 @@
       vec2 skyUV=vec2(.5*upper+1./1024.,.75+1./256.)+skyScale*vec2(fract(longitude),skyV-upper);
       vec3 air=mikuniSample(skyUV,vec2(longitude,skyV),skyScale).rgb;
 
-      // The far survey devotes 30% of its bearings to the 30° around Fuji.
-      float delta=fract(longitude-251./360.+.5)-.5,angle=abs(delta);
-      float farU=.5+sign(delta)*(min(angle,15./360.)*(.15/(15./360.))
-        +max(0.,angle-15./360.)*(.35/(.5-15./360.)));
-      vec2 farLocal=vec2(farU,clamp((elevation+3.)/14.,.002,.998));
-      vec2 farScale=vec2(1.,7./16.);
-      vec4 mountain=mikuniSample(vec2(0.,5./16.)+farLocal*farScale,farLocal,farScale);
-
+      // Even with the near cylinder displaced to its camera limit, the
+      // 14.8-degree surveyed crest cannot reach this part of the sky.
+      if(elevation>23.)return air;
       // The near 6.5 km of surveyed terrain is a cutout on a 3.2 km
       // cylinder. Each viewing bearing hits it once at any camera position.
       // Revealing a slope exposes the independently baked far terrain.
@@ -138,7 +133,19 @@
       vec2 nearLocal=vec2(atan(nearBearing.x,-nearBearing.y)/6.28318531,clamp(nearV,.002,.998));
       vec2 nearScale=vec2(1.,5./16.);
       vec4 shore=mikuniSample(nearLocal*nearScale,nearLocal,nearScale);
-      vec3 land=mix(mix(air,mountain.rgb,mikuniCoverage(mountain.a)),shore.rgb,mikuniCoverage(shore.a));
+      vec3 land=shore.rgb;
+      // The lowest near crest is -0.92 degrees. Below -3 the near survey
+      // completely covers the far one, including its filtering footprint.
+      if(nearElevation>-3.){
+        // The far survey devotes 30% of its bearings to the 30° around Fuji.
+        float delta=fract(longitude-251./360.+.5)-.5,angle=abs(delta);
+        float farU=.5+sign(delta)*(min(angle,15./360.)*(.15/(15./360.))
+          +max(0.,angle-15./360.)*(.35/(.5-15./360.)));
+        vec2 farLocal=vec2(farU,clamp((elevation+3.)/14.,.002,.998));
+        vec2 farScale=vec2(1.,7./16.);
+        vec4 mountain=mikuniSample(vec2(0.,5./16.)+farLocal*farScale,farLocal,farScale);
+        land=mix(mix(air,mountain.rgb,mikuniCoverage(mountain.a)),shore.rgb,mikuniCoverage(shore.a));
+      }
       return lakeSurface(land,nearBearing,nearLocal.x*360.+360.,-nearElevation);
     }`;
   // Long grass covers the upper traverses and several open ledges between

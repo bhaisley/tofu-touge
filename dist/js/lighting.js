@@ -148,15 +148,17 @@
     });
     const geometry = new T.SphereGeometry(1900, 64, 30);
     const sky = new T.Mesh(geometry, material);
-    sky.name = 'Haruna dawn'; sky.frustumCulled = false; sky.renderOrder = -100;
+    // The dome draws at the far plane. Opaque scenery can mask expensive
+    // survey and moving-water samples before the sky fragment shader runs.
+    sky.name = 'Haruna dawn'; sky.frustumCulled = false; sky.renderOrder = fuji ? 1000 : -100;
     sky.userData.fuji=fuji;sky.userData.horizonSource=landscape;
     scene.add(sky);
-    const environments=[null,null],panoramas=[null,null];
+    const environments=[null,null],panoramas=[null,null],loading=[];
+    const files=fuji?['mikuni-afternoon-horizon.webp','mikuni-blue-hour-horizon.webp']:['haruna-sky.webp'];
     let lakeLoaded=!fuji;
-    function setNight(night){
-      const key=night?1:0;
-      material.uniforms.night.value=key;
-      sky.name=fuji?(night?'Mikuni blue hour':'Mikuni afternoon'):(night?'Moon above Haruna Pass':'Haruna dawn');
+    function applySky(){
+      if(renderer.getContext().isContextLost())return;
+      const key=material.uniforms.night.value;
       material.uniforms.panorama.value=panoramas[fuji?key:0];
       material.uniforms.ready.value=material.uniforms.panorama.value && lakeLoaded?1:0;
       if(!material.uniforms.ready.value){scene.environment=null;return;}
@@ -176,30 +178,27 @@
       sky.userData.environment=environments[key];
       scene.environment=environments[key].texture;
     }
-    sky.userData.setNight=setNight;
-    if(fuji){
-      new T.TextureLoader().load(window.TougeArtURLs?.['mikuni-lake.webp']||'assets/art/mikuni-lake.webp',texture=>{
-        if(renderer.getContext().isContextLost())return;
-        texture.colorSpace=T.SRGBColorSpace;
-        material.uniforms.lakeMap.value=texture;lakeLoaded=true;
-        setNight(material.uniforms.night.value===1);
-      },undefined,()=>{
-        // The mountain and sky can still load if the lake asset is unavailable.
-        if(renderer.getContext().isContextLost())return;
-        lakeLoaded=true;setNight(material.uniforms.night.value===1);
-      });
-    }
-    const files=fuji?['mikuni-afternoon-horizon.webp','mikuni-blue-hour-horizon.webp']:['haruna-sky.webp'];
-    files.forEach((file,index)=>{
-      // A cached skyline from the earlier atlas layout uses different UVs.
-      const url=window.TougeArtURLs?.[file]||'assets/art/'+file+(fuji?'?layout=3':'');
-      new T.TextureLoader().load(url,texture=>{
-        if(renderer.getContext().isContextLost())return;
-        texture.colorSpace=T.SRGBColorSpace;texture.wrapS=T.RepeatWrapping;panoramas[index]=texture;
-        const key=material.uniforms.night.value;
-        if(!fuji||key===index)setNight(key===1);
-      });
-    });
+    const loader=new T.TextureLoader();
+    const lakeReady=fuji?loader.loadAsync(window.TougeArtURLs?.['mikuni-lake.webp']||'assets/art/mikuni-lake.webp')
+      .then(texture=>{texture.colorSpace=T.SRGBColorSpace;material.uniforms.lakeMap.value=texture;},
+        ()=>{/* The surveyed mountains and sky still work without the water map. */})
+      .then(()=>{lakeLoaded=true;applySky();}):Promise.resolve();
+    sky.userData.setNight=night=>{
+      const key=night?1:0,index=fuji?key:0;
+      material.uniforms.night.value=key;
+      sky.name=fuji?(night?'Mikuni blue hour':'Mikuni afternoon'):(night?'Moon above Haruna Pass':'Haruna dawn');
+      if(!loading[index]){
+        // Each 4096 x 1024 survey decodes to 16 MiB before mipmaps. Load the
+        // opposite light only when selected and reuse it on subsequent runs.
+        const file=files[index],url=window.TougeArtURLs?.[file]||'assets/art/'+file+(fuji?'?layout=3':'');
+        loading[index]=loader.loadAsync(url).then(texture=>{
+          texture.colorSpace=T.SRGBColorSpace;texture.wrapS=T.RepeatWrapping;panoramas[index]=texture;
+          if(!fuji || material.uniforms.night.value===index)applySky();
+        },()=>{loading[index]=null;});
+      }
+      applySky();
+    };
+    sky.userData.whenReady=()=>Promise.all([lakeReady,loading[fuji?material.uniforms.night.value:0]]);
     return sky;
   }
 

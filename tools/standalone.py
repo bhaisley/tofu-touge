@@ -27,7 +27,7 @@ def main():
     css_assets = {DIST / src for src in re.findall(r"url\('([^']+)'\)", css)}
     css = re.sub(r"url\('([^']+)'\)", lambda m: "url('" + data_url(DIST / m[1]) + "')", css)
     html = re.sub(r'  <link rel="preload"[^>]+>\n', "", html)
-    html = html.replace('<link rel="stylesheet" href="style.css">', "<style>\n" + css + "\n</style>")
+    html = re.sub(r'<link rel="stylesheet" href="style\.css(?:\?[^"]*)?">', lambda _: "<style>\n" + css + "\n</style>", html)
 
     banks = {
         "TougeMusicURLs": "assets/music/*.mp3",

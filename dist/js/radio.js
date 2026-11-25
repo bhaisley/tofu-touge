@@ -7,7 +7,11 @@
     {id:'cedar-afterglow', title:'Cedar Afterglow', genre:'Japanese jazz-hop'},
     {id:'rain-on-the-engawa', title:'Rain on the Engawa', genre:'Lo-fi hip-hop'},
     {id:'daybreak-signal', title:'Daybreak Signal', genre:'J-pop'},
-    {id:'kori-no-hibana', title:'Kōri no Hibana', genre:'Kawaii metal'}
+    {id:'kori-no-hibana', title:'Kōri no Hibana', genre:'Kawaii metal'},
+    {id:'glass-lake-express', title:'Glass Lake Express', genre:'City pop'},
+    {id:'lanterns-on-yamanaka', title:'Lanterns on Yamanaka', genre:'Koto drum and bass'},
+    {id:'myojin-redline', title:'Myojin Redline', genre:'Matsuri rock'},
+    {id:'hirano-after-hours', title:'Hirano After Hours', genre:'Japanese jazz fusion'}
   ];
   const script = document.currentScript?.src;
   const level = .51 * 10 ** (2 / 20);

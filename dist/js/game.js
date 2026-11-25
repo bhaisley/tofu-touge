@@ -501,6 +501,9 @@
       else {unlockAudio();setMusic(!music);}
     });
     bindVolumes();bind('radio-done',dismiss);refreshRadio();
+    const list=byId('radio-list'),selected=list.children[radio.index];
+    if(selected && list.scrollHeight>list.clientHeight)
+      list.scrollTop=selected.getBoundingClientRect().top-list.getBoundingClientRect().top-(list.clientHeight-selected.offsetHeight)/2;
   }
   radio.onChange=reason=>{
     if(reason==='select'||reason==='advance'){

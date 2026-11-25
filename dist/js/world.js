@@ -38,6 +38,33 @@
       return mix(local,far,smooth(8+turnout*15,40+turnout*15,d));
     };
   }
+  // Keep one set of vertices, normals and canopy tints across the survey.
+  // Each camera (including the sun and the wet road) can reject whole tiles.
+  function* addMikuniTerrainTiles(scene,grid,material,nx,nz){
+    const side=48,stride=nx+1,positions=grid.attributes.position;
+    const source=grid.index.array,ordered=new source.constructor(source.length);
+    const index=new T.BufferAttribute(ordered,1),point=new T.Vector3();
+    let offset=0;
+    for(let z=0;z<nz;z+=side){
+      for(let x=0;x<nx;x+=side){
+        const endX=Math.min(x+side,nx),endZ=Math.min(z+side,nz),start=offset;
+        const bounds=new T.Box3();
+        for(let row=z;row<=endZ;row++){
+          for(let col=x;col<=endX;col++)bounds.expandByPoint(point.fromBufferAttribute(positions,row*stride+col));
+          if(row===endZ)break;
+          const first=(row*nx+x)*6,count=(endX-x)*6;
+          ordered.set(source.subarray(first,first+count),offset);offset+=count;
+        }
+        const tile=new T.BufferGeometry();
+        for(const [name,attribute] of Object.entries(grid.attributes))tile.setAttribute(name,attribute);
+        tile.setIndex(index);tile.setDrawRange(start,offset-start);
+        tile.boundingBox=bounds;tile.boundingSphere=bounds.getBoundingSphere(new T.Sphere());
+        const mesh=new T.Mesh(tile,material);
+        mesh.name='Mikuni mountainside';mesh.receiveShadow=true;mesh.castShadow=true;scene.add(mesh);
+      }
+      yield;
+    }
+  }
   function* addTerrain(scene,course,groundAt,sky){
     const b=course.bounds,step=7,margin=260,x0=b.minX-margin,z0=b.minZ-margin;
     const nx=Math.ceil((b.maxX-b.minX+2*margin)/step),nz=Math.ceil((b.maxZ-b.minZ+2*margin)/step);
@@ -66,15 +93,18 @@
     bankMaterial.side=T.DoubleSide;bankMaterial.onBeforeCompile=material.onBeforeCompile;
     TougeLighting.detailTerrainMaterial(bankMaterial,sky);
     TougeLighting.detailTerrainMaterial(material,sky);
-    const m=new T.Mesh(geo,material);
-    m.name='Cedar forest floor';m.receiveShadow=true;m.castShadow=true;scene.add(m);
+    if(fuji)yield* addMikuniTerrainTiles(scene,geo,material,nx,nz);
+    else{
+      const m=new T.Mesh(geo,material);
+      m.name='Cedar forest floor';m.receiveShadow=true;m.castShadow=true;scene.add(m);
+    }
     function drawnHeight(x,z){
       const u=clamp((x-x0)/step,0,nx-.00001),v=clamp((z-z0)/step,0,nz-.00001);
       const i=Math.floor(u),j=Math.floor(v),a=j*(nx+1)+i,dx=u-i,dz=v-j,ys=geo.attributes.position;
       const h0=ys.getY(a),h1=ys.getY(a+1),h2=ys.getY(a+nx+1),h3=ys.getY(a+nx+2);
       return dx+dz<=1?h0+(h1-h0)*dx+(h2-h0)*dz:h3+(h2-h3)*(1-dx)+(h1-h3)*(1-dz);
     }
-    return {map:material.map,colors:geo.attributes.color,cover:geo.attributes.grassCover,x0,z0,step,nx,nz,drawnHeight,bankMaterial};
+    return {geometry:geo,map:material.map,colors:geo.attributes.color,cover:geo.attributes.grassCover,x0,z0,step,nx,nz,drawnHeight,bankMaterial};
   }
   // Contact patches use the very triangles shown by the renderer. The road
   // crown, bank and shoulder lip differ from a plane at the vehicle's centre.
@@ -151,6 +181,7 @@
     }
     const pavement=new T.Mesh(geometry(pos,idx,uv),wetRoad.pavement);
     pavement.name='Wet mountain asphalt';
+    if(course.mapId==='fuji')pavement.renderOrder=-5;
     pavement.receiveShadow=true;scene.add(pavement);wetRoad.exclude(pavement);
     const gravelGeometry=geometry(shoulders,shouldIdx,shouldUV,shouldColors);
     wetRoad.matchForestFloor(gravelGeometry);
@@ -389,6 +420,7 @@
       this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=T.PCFSoftShadowMap;
       this.scene=new T.Scene();this.scene.background=new T.Color(0x899da6);this.scene.fog=new T.FogExp2(0x596d74,.00215);
       this.camera=new T.PerspectiveCamera(60,1,.35,2350);this.camera.rotation.order='YXZ';
+      if(course.mapId==='fuji')this.camera.layers.enable(TougeGrass.fineDetailLayer);
       this.cameraMode=0;this.viewHeading=0;this.look=new T.Vector3();this.targetPos=new T.Vector3();
       this.reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       this.sky=TougeLighting.makeSky(this.scene,this.renderer,course);
@@ -409,6 +441,14 @@
       yield;
       this.forest=yield* window.addForest.steps(this.scene,course,groundAt,forestFloor,this.walls,this.sky);
       this.roadside=yield* window.addRoadside.steps(this.scene,course);
+      if(course.mapId==='fuji'){
+        // Terrain, stands and roadside fixtures are fixed. Their visibility,
+        // instance buffers and the separate moving spotlights can still change.
+        this.scene.updateMatrixWorld(true);this.scene.matrixAutoUpdate=false;
+        this.scene.traverse(object=>{
+          if(object!==this.sky && (object.isMesh || object.isGroup))object.matrixAutoUpdate=false;
+        });
+      }
       this.rig=new T.Group();this.rig.rotation.order='YXZ';this.scene.add(this.rig);
       this.parkedStation=NaN;this.parkedMap=null;this.probeCenter=new T.Vector3();
       this.vehicles=new Map();this.vehicleProbes={};
@@ -432,6 +472,13 @@
       if(!kit){
         const model=id==='ae86'?TougeAE86:TougeNeo86;
         const car=yield* model.create.steps();
+        if(course.mapId==='fuji'){
+          // In chase view the car and the road cover much of the near slope.
+          // Let their opaque pixels reject the multilayer terrain shading.
+          car.group.traverse(mesh=>{
+            if(mesh.isMesh && !mesh.material.transparent && mesh.renderOrder===0)mesh.renderOrder=-10;
+          });
+        }
         yield;
         if(id==='neo86')TougeCarOcclusion.install(car);
         const reflections=yield* TougePassReflections.install.steps(car.group,course,this.vehicleProbes);
@@ -472,6 +519,8 @@
       return buildBatches(this.mountVehicle(id,this.course.physicalCourse),pause);
     }
     async warmGraphics(pause){
+      await this.sky.userData.whenReady();
+      await pause();
       const {renderer,scene,camera}=this;
       // The wet road and traffic mirrors render into linear targets. They use
       // different shader variants from the final tone-mapped display pass.
@@ -752,7 +801,7 @@
       const rollingScale=(c.rollingRadius??TougeDrive.rollingRadius)/this.car.axles.radius;
       this.car.setMotion({wheelAngle:c.wheelAngle*rollingScale,rearWheelAngle:c.rearWheelAngle*rollingScale,
         steer:-(c.steerAngle??c.wheel*.44),brake,bodyRoll:this.bodyRoll,bodyPitch:this.bodyPitch,
-        suspensionOffsets:this.legOffsets});
+        suspensionOffsets:this.legOffsets,reversing:c.gear<0});
       this.tailReflection.opacity=this.course.night?.086+.18*brake:.027+.075*brake;
       const speed=Math.abs(c.speed);
       this.viewSpeed=cut?speed:mix(this.viewSpeed,speed,1-Math.exp(-dt*3.9));

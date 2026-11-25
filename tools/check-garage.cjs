@@ -57,7 +57,12 @@ async function main(){
       garageWorld.car.group.parent===garageWorld.rig && garageWorld.rig.children.length===1 &&
       garageDrive.contact.s===parkingSpot));
     await click('#car-back');await click('#start-btn');await state('racing');
-    await page.keyboard.down('KeyW');await page.waitForFunction(()=>garageDrive.kmh>18,null,{timeout:30000});
+    await page.keyboard.down('KeyS');
+    await page.waitForFunction(()=>garageDrive.gear<0 &&
+      garageWorld.car.group.getObjectByName('reverseLens').material.emissiveIntensity>1);
+    await page.keyboard.up('KeyS');await page.keyboard.down('KeyW');
+    await page.waitForFunction(()=>garageDrive.kmh>18 && garageDrive.gear>0 &&
+      garageWorld.car.group.getObjectByName('reverseLens').material.emissiveIntensity===0,null,{timeout:30000});
     await page.keyboard.up('KeyW');assert(await page.locator('#boost').isHidden());
     assert(await page.evaluate(()=>garageWorld.car.driver.visible && garageDrive.boost===0));
     await page.keyboard.press('Escape');await click('#restart');await state('countdown');await state('racing');await ready('ae86');

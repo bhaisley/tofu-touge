@@ -96,7 +96,11 @@ async function main(){
         return type==='webgl2'?null:getContext.call(this,type,...options);
       };
     });
-    const errors=[];
+    const errors=[],surveys=new Set();
+    if(!offline)page.on('request',request=>{
+      const file=new URL(request.url()).pathname.split('/').pop();
+      if(/^mikuni-.*-horizon\.webp$/.test(file))surveys.add(file);
+    });
     page.on('pageerror',e=>errors.push(e.message));
     page.on('console',m=>{if(m.type()==='error')errors.push(m.text().slice(0,400));});
     await page.addInitScript(()=>{
@@ -148,6 +152,8 @@ async function main(){
       assert.equal(telemetry.error,0);
       if(webgl1)assert.equal(telemetry.webgl2,false);
       await page.waitForFunction(()=>testPass.sky.material.uniforms.ready.value);
+      if(!offline)assert.deepEqual([...surveys].sort(),sign===1?['mikuni-afternoon-horizon.webp']:
+        ['mikuni-afternoon-horizon.webp','mikuni-blue-hour-horizon.webp']);
       const skyline=await page.evaluate(checkHiranoSkyline);
       assert(skyline.checked>700,id+' wooded skyline must be visible');
       assert.equal(skyline.broken,0,id+' has detached terrain in the Hirano sky');
