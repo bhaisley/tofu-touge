@@ -60,10 +60,10 @@
     }
     const rear=s?s.length/2:classic?2.085:2.165;
     if(form){
-      const [where,height,width,chord,support]=form.wing,z=where*rear,y=height+(vehicle==='fd3s'?.10:0);
+      const [where,y,width,chord,support]=form.wing,z=where*rear;
       face([-width,y,z-chord/2],[width,y,z-chord/2],[width,y+.025,z+chord/2],[-width,y+.025,z+chord/2],0xb3fbef);
-      for(const k of [-1,1])face([k*support,cuts.at(-2)[2],z-.09],[k*support,cuts.at(-2)[2],z+.08],
-        [k*support,y,z+.08],[k*support,y,z-.09],0x87c8c6);
+      for(const k of [-1,1])face([k*support,cuts.at(-2)[2],z-(vehicle==='gc8'||vehicle==='bnr32'?.33:.22)],
+        [k*support,cuts.at(-2)[2],z+.04],[k*(width-.025),y,z+chord*.41],[k*(width-.025),y,z-chord*.49],0x87c8c6);
     }
     const strip=(x1,x2,y1,y2,z,hex)=>face([x1,y1,z],[x2,y1,z],[x2,y2,z],[x1,y2,z],hex);
     strip(-.73,.73,.30,.42,rear+.004,0x254650);

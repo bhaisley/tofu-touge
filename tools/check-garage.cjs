@@ -95,11 +95,32 @@ async function main(){
       assert.equal(await page.locator('[data-vehicle="'+id+'"]').getAttribute('aria-pressed'),'true');
       const parked=await page.evaluate(id=>{
         const car=garageWorld.car,s=TougeRivals.cars[id];
-        return car.wheels.length===4 && Math.abs(car.axles.rear-car.axles.front-s.wheelbase)<.001 &&
-          car.wheels.every((wheel,i)=>Math.abs(Math.abs(wheel.hub.position.x)*2-s.track[i>>1])<.001) &&
-          !car.driver.visible && car.body.getObjectByName('hatchGlass').material.map!==null;
+        const hubs=car.wheels.map(wheel=>wheel.hub.position);
+        const front=hubs[0].z,rear=hubs[2].z;
+        const position=car.body.getObjectByName('paint').geometry.getAttribute('position');
+        let fenderHalfWidth=0,roofHeight=0;
+        for(let i=0;i<position.count;i++){
+          const z=position.getZ(i);
+          if(Math.min(Math.abs(z-front),Math.abs(z-rear))<.25){
+            fenderHalfWidth=Math.max(fenderHalfWidth,Math.abs(position.getX(i)));
+          }
+          roofHeight=Math.max(roofHeight,position.getY(i));
+        }
+        const bounds=new THREE.Box3();
+        for(const part of car.body.children.filter(p=>p.isMesh)){
+          part.geometry.computeBoundingBox();bounds.union(part.geometry.boundingBox);
+        }
+        return {
+          wheelbase:[0,1].map(side=>Math.abs(hubs[side+2].z-hubs[side].z-s.wheelbase)),
+          track:[0,1].map(axle=>Math.abs(hubs[axle*2+1].x-hubs[axle*2].x-s.track[axle])),
+          length:Math.abs(bounds.max.z-bounds.min.z-s.length),
+          width:Math.abs(2*fenderHalfWidth-s.width),height:Math.abs(roofHeight-s.height),
+          interior:!car.driver.visible&&!!car.body.getObjectByName('hatchGlass').material.map
+        };
       },id);
-      assert(parked,id+' has its own measured chassis, garage interior and heated backlight');
+      assert(parked.interior,id+' has its garage interior and heated backlight');
+      assert([...parked.track,...parked.wheelbase].every(error=>error<.001),id+' hub positions');
+      assert(parked.length<.012&&parked.width<.009&&parked.height<.002,id+' installed body envelope '+JSON.stringify(parked));
       await click('#car-back');await click('#start-btn');await state('racing');await ready(id);
       await page.keyboard.down('KeyW');
       await page.waitForFunction(id=>{

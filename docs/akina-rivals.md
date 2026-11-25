@@ -15,7 +15,38 @@ The table lists Japanese road-car specifications. Overall width excludes the mir
 | Subaru Impreza WRX Type R STi Version V GC8 | 4,350 × 1,690 × 1,405 | 2,520 | 1,470 / 1,460 | 1,260 kg | 280 PS, 1,994 cc EJ20 turbo flat-four |
 | Nissan Skyline GT-R V-spec II BNR32 | 4,545 × 1,755 × 1,355 | 2,615 | 1,480 / 1,480 | 1,500 kg | 280 PS, 2,568 cc RB26DETT twin-turbo inline-six |
 
-The FD, blue two-door Subaru and V-spec II use Japanese trim-specific catalogue dimensions. The FC follows the late Savanna body and the period ∞ III specification. [Mazda Type R catalogue](https://gazoo.com/catalog/maker/MAZDA/EFINI_RX7/199112/2501590/) · [Savanna catalogue](https://www.carsensor.net/catalog/mazda/savanna_rx-7/F001/M002G009/) · [Period Mazda ∞ brochures](https://minkara.carview.co.jp/userid/300038/car/194396/921600/photo.aspx) · [Subaru Type R catalogue](https://gazoo.com/catalog/maker/SUBARU/IMPREZA/199211/4501985/) · [Nissan V-spec II catalogue](https://gazoo.com/catalog/maker/NISSAN/SKYLINE/199308/1501403/)
+The FD, blue two-door Subaru and V-spec II use Japanese trim-specific catalogue dimensions. The FC follows the late, two-seat Savanna and the period ∞ III specification. [Mazda Type R catalogue](https://gazoo.com/catalog/maker/MAZDA/EFINI_RX7/199112/2501590/) · [June 1990 Savanna catalogue](https://gazoo.com/catalog/maker/MAZDA/SAVANNA_RX7/198904/2502478/) · [Period Mazda ∞ brochures](https://minkara.carview.co.jp/userid/300038/car/194396/921600/photo.aspx) · [Subaru Type R catalogue](https://gazoo.com/catalog/maker/SUBARU/IMPREZA/199211/4501985/) · [Nissan V-spec II catalogue](https://gazoo.com/catalog/maker/NISSAN/SKYLINE/199308/1501403/)
+
+## Road cars beside the game models
+
+![Four real road cars beside matching camera angles of their playable counterparts in Tofu Touge](media/akina-rivals-reference.jpg)
+
+The left column shows full-size road cars. The right column shows the v0.7.1 garage at Haruna. On each car, the production shell sets the proportions and the corresponding *Initial D* build sets the aero, wheels and markings.
+
+| Car | What the comparison changed |
+| --- | --- |
+| Keisuke’s FD3S | Mazda’s side elevation locates the axles and the ends of the roof and hatch. The model now has a shorter nose ahead of the front wheels, rounded fender returns, a deeper wraparound backlight and a concealed door handle. Keisuke’s tall wing and silver five-spokes come from his early Akina car. [Mazda’s 1991 brochure, page 21](https://www.nengun.com/oem/mazda/rx-7-fd3s/rx-7-november-1991-brochure) · [Volume-one character reference](https://www.aoshima-bk.co.jp/en/product/4905083056219/) |
+| Ryosuke’s FC3S | The large liftback, near-upright parked rear wiper and shallow spoiler give the FC its own rear silhouette. The low spoiler has four feet. Each rear lamp has separate red chambers, a vertical clear reversing lens and an amber outer end. The dished wheels have a polished lip and exposed fasteners. [Full-size Savanna](https://commons.wikimedia.org/wiki/File:Tuned_Mazda_SAVANNA_RX-7_%E2%88%9E_(E-FC3S)_rear.jpg) · [Volume-five Akina car](https://www.aoshima-bk.co.jp/en/product/4905083062494/) |
+| Bunta’s GC8 | The two-door Type R sets the length of the door glass and the sweep of the rear pillar. The plate sits in the bumper, with the WRX graphic and lock between the lamps. The divided scoop, round STi fog covers, red-trimmed integrated seats and two-level rear wing follow Bunta’s car. [Full-size Type R Version V photo gallery](https://www.enhance-auto.jp/used-car/subaru/impreza/ea2630353/) · [Ignition Model’s scan-based Fujiwara reference](https://ig-model.com/lineup/3538/) |
+| Nakazato’s BNR32 | The long rear quarter and tapered spoiler feet follow the V-spec II. Four round red lamps sit in body-colour surrounds with the indicators between each pair. Reverse lamps flank the recessed plate. The bright five-spokes and NightKids quarter-window lettering follow Nakazato’s build. [Full-size V-spec II photo gallery](https://www.euroclassixcars.com/products/1994-nissan-skyline-gtr-r32-v-spec-2ecc-288) · [Nakazato character reference](https://www.aoshima-bk.co.jp/en/product/4905083200438/) |
+
+The garage test measures the loaded Three.js geometry at rest. Length includes fitted bumpers and plates. Fender width is sampled across the axle regions to exclude the mirrors. Roof height uses the tire contact plane as zero. These values are rounded to the nearest millimetre. [Run the measurement check](../tools/check-garage.cjs)
+
+| Playable car | Rendered length × fender width × roof height (mm) | Measured wheelbase (mm) |
+| --- | --- | --- |
+| FD3S | 4,291 × 1,760 × 1,230 | 2,425 |
+| FC3S | 4,341 × 1,695 × 1,270 | 2,430 |
+| GC8 | 4,356 × 1,692 × 1,405 | 2,520 |
+| BNR32 | 4,544 × 1,761 × 1,355 | 2,615 |
+
+### Photograph credits
+
+The comparison uses crops of the following photographs. Each crop carries its original license. The photographs appear only in this gallery.
+
+- FD3S photographed by Freggs. [Original photograph](https://commons.wikimedia.org/wiki/File:Mazda_E-FD3S_%CE%B5%D6%AEfini_RX-7_Type_R_(20052812012).jpg) · [CC BY-SA 2.0](https://creativecommons.org/licenses/by-sa/2.0/)
+- FC3S photographed by Tokumeigakarinoaoshima. [Original photograph](https://commons.wikimedia.org/wiki/File:Tuned_Mazda_SAVANNA_RX-7_%E2%88%9E_(E-FC3S)_rear.jpg) · [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)
+- Australian-market Version 5 STi coupe photographed by FotoSleuth. [Original photograph](https://commons.wikimedia.org/wiki/File:1999_Subaru_Impreza_(MY99)_WRX_STI_Version_5_coupe_(2013-02-03)_01.jpg) · [CC BY 2.0](https://creativecommons.org/licenses/by/2.0/)
+- BNR32 V-spec II photographed by Corsadent56709. [Original photograph](https://commons.wikimedia.org/wiki/File:HK_Grey_Nissan_Skyline_GTR_BNR32_V-spec_II_(rear).jpg) · [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)
 
 ## Character builds
 

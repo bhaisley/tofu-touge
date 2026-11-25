@@ -4,11 +4,13 @@ A Three.js drift game on two Japanese mountain passes. Choose from six cars, fro
 
 **[Play in your browser](https://bhaisley.github.io/tofu-touge/)** · [Download the offline game](https://github.com/bhaisley/tofu-touge/releases/latest/download/Tofu-Touge.html) · [Watch the full downhill run](https://bhaisley.github.io/tofu-touge/docs/media/haruna-full-run.mp4)
 
-## Akina Rivals · v0.7.0
+## Akina Rivals · v0.7.1
 
 ![Four playable cars at Haruna, with the Takahashi brothers’ RX-7s above the Fujiwara Impreza and Nakazato Skyline](docs/media/akina-rivals.jpg)
 
-Four fan favorites join the garage. Netorabo voters tied the Takahashi brothers’ Mazdas for first place. Takumi’s Trueno was already playable, so the next two places went to Bunta’s two-door Subaru and Nakazato’s Skyline. [Original poll and vote counts](https://nlab.itmedia.co.jp/research/articles/2098470/5/)
+The four rivals have revised bodywork, glass, lights and wheels. See each playable car beside a photograph of its full-size counterpart, with catalogue dimensions and measurements from the game. [Road cars beside the game models](docs/akina-rivals.md#road-cars-beside-the-game-models)
+
+Netorabo voters tied the Takahashi brothers’ Mazdas for first place. Takumi’s Trueno was already playable, so the next two places in the garage went to Bunta’s two-door Subaru and Nakazato’s Skyline. [Original poll and vote counts](https://nlab.itmedia.co.jp/research/articles/2098470/5/)
 
 | Driver | Car | What to look and listen for |
 | --- | --- | --- |

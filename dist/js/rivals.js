@@ -5,7 +5,7 @@
     fd3s: {
       name:'Mazda ɛ̃fini RX-7', trim:'FD3S', short:'RX-7', label:'FD3S · RX-7', driver:'Keisuke Takahashi',
       spec:'Keisuke Takahashi · Type R · Sequential twin-turbo rotary · RWD',
-      length:4.295, width:1.760, height:1.230, wheelbase:2.425, frontZ:-1.245, track:[1.460,1.460],
+      length:4.295, width:1.760, height:1.230, wheelbase:2.425, frontZ:-1.298, track:[1.460,1.460],
       wheel:[.317,.225,17,5,0xaeb2b5], paint:0xf9cd26, plate:'63-887', district:'37',kana:'お', badge:'ɛ̃fini', team:'RedSuns',
       curb:1260, launch:3220, roll:.031, engine:'13B-REW', idle:850, redline:8000, shift:7550,
       ratios:[3.483,2.015,1.391,1,.719], final:4.100, reverse:3.288, frontWeight:.50, inertia:1650, cg:.45,
@@ -27,7 +27,7 @@
       name:'Subaru Impreza WRX STi', trim:'GC8', short:'Impreza', label:'GC8 · Impreza', driver:'Bunta Fujiwara',
       spec:'Bunta Fujiwara · Type R Version V · 2.0 L turbo boxer · AWD',
       length:4.350, width:1.690, height:1.405, wheelbase:2.520, frontZ:-1.235, track:[1.470,1.460],
-      wheel:[.306,.205,16,5,0xb79a52], paint:0x234990, plate:'13-600',district:'52',kana:'が', badge:'IMPREZA', team:'',
+      wheel:[.306,.205,16,5,0xb99a52], paint:0x2f5b9e, plate:'13-600',district:'52',kana:'が', badge:'WRX', team:'',
       curb:1260, launch:3860, roll:.043, engine:'EJ20', idle:850, redline:8000, shift:7360,
       ratios:[3.083,2.062,1.545,1.151,.825], final:4.444, reverse:3.333, frontWeight:.585, inertia:1750, cg:.48,
       boostBar:1.14, boostShare:.44, spool:[2150,4000,3.5], drive:'dccd', grip:[1.05,1.08], stiffness:[11.9,12.9],
